@@ -1,0 +1,122 @@
+[
+  {
+    "name": "Gerbang Tol Merak",
+    "latitude": -5.8952,
+    "longitude": 106.0173,
+    "ruas": "Tangerang-Merak"
+  },
+  {
+    "name": "Gerbang Tol Cikupa",
+    "latitude": -6.2247,
+    "longitude": 106.4645,
+    "ruas": "Tangerang-Merak"
+  },
+  {
+    "name": "Gerbang Tol Cikarang Barat",
+    "latitude": -6.3049,
+    "longitude": 107.0952,
+    "ruas": "Jakarta-Cikampek"
+  },
+  {
+    "name": "Gerbang Tol Palimanan",
+    "latitude": -6.7325,
+    "longitude": 108.4072,
+    "ruas": "Cikopo-Palimanan"
+  },
+  {
+    "name": "Gerbang Tol Kanci",
+    "latitude": -6.8037,
+    "longitude": 108.6682,
+    "ruas": "Palimanan-Kanci"
+  },
+  {
+    "name": "Gerbang Tol Pejagan",
+    "latitude": -6.8997,
+    "longitude": 108.9481,
+    "ruas": "Kanci-Pejagan"
+  },
+  {
+    "name": "Gerbang Tol Pemalang",
+    "latitude": -6.9002,
+    "longitude": 109.3796,
+    "ruas": "Pejagan-Pemalang"
+  },
+  {
+    "name": "Gerbang Tol Batang",
+    "latitude": -6.9196,
+    "longitude": 109.7192,
+    "ruas": "Pemalang-Batang"
+  },
+  {
+    "name": "Gerbang Tol Kalikangkung",
+    "latitude": -6.9722,
+    "longitude": 110.4547,
+    "ruas": "Batang-Semarang"
+  },
+  {
+    "name": "Gerbang Tol Banyumanik",
+    "latitude": -7.0542,
+    "longitude": 110.4297,
+    "ruas": "Semarang-Solo"
+  },
+  {
+    "name": "Gerbang Tol Salatiga",
+    "latitude": -7.3306,
+    "longitude": 110.4897,
+    "ruas": "Semarang-Solo"
+  },
+  {
+    "name": "Gerbang Tol Colomadu",
+    "latitude": -7.5271,
+    "longitude": 110.7651,
+    "ruas": "Solo-Ngawi"
+  },
+  {
+    "name": "Gerbang Tol Ngawi",
+    "latitude": -7.4067,
+    "longitude": 111.3508,
+    "ruas": "Solo-Ngawi"
+  },
+  {
+    "name": "Gerbang Tol Kertosono",
+    "latitude": -7.5892,
+    "longitude": 111.9932,
+    "ruas": "Ngawi-Kertosono"
+  },
+  {
+    "name": "Gerbang Tol Mojokerto",
+    "latitude": -7.4706,
+    "longitude": 112.4336,
+    "ruas": "Kertosono-Mojokerto"
+  },
+  {
+    "name": "Gerbang Tol Waru",
+    "latitude": -7.3456,
+    "longitude": 112.7278,
+    "ruas": "Surabaya-Mojokerto"
+  },
+  {
+    "name": "Gerbang Tol Gempol",
+    "latitude": -7.5897,
+    "longitude": 112.7762,
+    "ruas": "Surabaya-Gempol"
+  },
+  {
+    "name": "Gerbang Tol Pandaan",
+    "latitude": -7.6527,
+    "longitude": 112.7751,
+    "ruas": "Gempol-Pasuruan"
+  },
+  {
+    "name": "Gerbang Tol Grati",
+    "latitude": -7.7286,
+    "longitude": 113.0171,
+    "ruas": "Pasuruan-Probolinggo"
+  },
+  {
+    "name": "Gerbang Tol Probolinggo Timur",
+    "latitude": -7.7565,
+    "longitude": 113.2876,
+    "ruas": "Pasuruan-Probolinggo"
+  }
+]

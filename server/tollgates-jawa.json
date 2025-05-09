@@ -1,0 +1,289 @@
+[
+  {
+    "name": "Gerbang Tol Cawang",
+    "latitude": -6.2556,
+    "longitude": 106.8706,
+    "ruas": "Jakarta Inner Ring Road",
+    "tarif": {"gol1": 10000, "gol2": 15000, "gol3": 20000, "gol4": 25000, "gol5": 30000}
+  },
+  {
+    "name": "Gerbang Tol Tomang",
+    "latitude": -6.1856,
+    "longitude": 106.7902,
+    "ruas": "Jakarta Inner Ring Road",
+    "tarif": {"gol1": 9000, "gol2": 13500, "gol3": 18000, "gol4": 22500, "gol5": 27000}
+  },
+  {
+    "name": "Gerbang Tol Pluit",
+    "latitude": -6.1175,
+    "longitude": 106.7923,
+    "ruas": "Jakarta Inner Ring Road",
+    "tarif": {"gol1": 9000, "gol2": 13500, "gol3": 18000, "gol4": 22500, "gol5": 27000}
+  },
+  {
+    "name": "Gerbang Tol Tanjung Priok",
+    "latitude": -6.1177,
+    "longitude": 106.8858,
+    "ruas": "Jakarta Inner Ring Road",
+    "tarif": {"gol1": 10000, "gol2": 15000, "gol3": 20000, "gol4": 25000, "gol5": 30000}
+  },
+  {
+    "name": "Gerbang Tol Ulujami",
+    "latitude": -6.2522,
+    "longitude": 106.7828,
+    "ruas": "Jakarta Outer Ring Road",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Pondok Pinang",
+    "latitude": -6.2703,
+    "longitude": 106.7825,
+    "ruas": "Jakarta Outer Ring Road",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Pasar Rebo",
+    "latitude": -6.3296,
+    "longitude": 106.8722,
+    "ruas": "Jakarta Outer Ring Road",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Cimanggis",
+    "latitude": -6.3676,
+    "longitude": 106.8728,
+    "ruas": "Jakarta Outer Ring Road",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Cikunir",
+    "latitude": -6.2672,
+    "longitude": 106.9447,
+    "ruas": "Jakarta Outer Ring Road",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Cakung",
+    "latitude": -6.2026,
+    "longitude": 106.9581,
+    "ruas": "Jakarta Outer Ring Road",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Karang Tengah",
+    "latitude": -6.2207,
+    "longitude": 106.6697,
+    "ruas": "Jakarta-Tangerang",
+    "tarif": {"gol1": 11000, "gol2": 16500, "gol3": 22000, "gol4": 27500, "gol5": 33000}
+  },
+  {
+    "name": "Gerbang Tol Kebon Nanas",
+    "latitude": -6.1882,
+    "longitude": 106.6358,
+    "ruas": "Jakarta-Tangerang",
+    "tarif": {"gol1": 11000, "gol2": 16500, "gol3": 22000, "gol4": 27500, "gol5": 33000}
+  },
+  {
+    "name": "Gerbang Tol Tangerang",
+    "latitude": -6.1781,
+    "longitude": 106.6306,
+    "ruas": "Jakarta-Tangerang",
+    "tarif": {"gol1": 11000, "gol2": 16500, "gol3": 22000, "gol4": 27500, "gol5": 33000}
+  },
+  {
+    "name": "Gerbang Tol Cikarang Barat",
+    "latitude": -6.3049,
+    "longitude": 107.0952,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Cikarang Timur",
+    "latitude": -6.3146,
+    "longitude": 107.1762,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 20000, "gol2": 30000, "gol3": 40000, "gol4": 50000, "gol5": 60000}
+  },
+  {
+    "name": "Gerbang Tol Karawang Barat",
+    "latitude": -6.3056,
+    "longitude": 107.2936,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 25000, "gol2": 37500, "gol3": 50000, "gol4": 62500, "gol5": 75000}
+  },
+  {
+    "name": "Gerbang Tol Karawang Timur",
+    "latitude": -6.3122,
+    "longitude": 107.3672,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 29000, "gol2": 43500, "gol3": 58000, "gol4": 72500, "gol5": 87000}
+  },
+  {
+    "name": "Gerbang Tol Cikampek",
+    "latitude": -6.4197,
+    "longitude": 107.4561,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 35000, "gol2": 52500, "gol3": 70000, "gol4": 87500, "gol5": 105000}
+  },
+  {
+    "name": "Gerbang Tol Cibubur",
+    "latitude": -6.3692,
+    "longitude": 106.8908,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 9000, "gol2": 13500, "gol3": 18000, "gol4": 22500, "gol5": 27000}
+  },
+  {
+    "name": "Gerbang Tol Cimanggis",
+    "latitude": -6.3676,
+    "longitude": 106.8728,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 12000, "gol2": 18000, "gol3": 24000, "gol4": 30000, "gol5": 36000}
+  },
+  {
+    "name": "Gerbang Tol Citeureup",
+    "latitude": -6.4886,
+    "longitude": 106.8722,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 14000, "gol2": 21000, "gol3": 28000, "gol4": 35000, "gol5": 42000}
+  },
+  {
+    "name": "Gerbang Tol Sentul",
+    "latitude": -6.5472,
+    "longitude": 106.8525,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 17000, "gol2": 25500, "gol3": 34000, "gol4": 42500, "gol5": 51000}
+  },
+  {
+    "name": "Gerbang Tol Bogor",
+    "latitude": -6.595,
+    "longitude": 106.8167,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 22000, "gol2": 33000, "gol3": 44000, "gol4": 55000, "gol5": 66000}
+  },
+  {
+    "name": "Gerbang Tol Ciawi",
+    "latitude": -6.6706,
+    "longitude": 106.8492,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 26000, "gol2": 39000, "gol3": 52000, "gol4": 65000, "gol5": 78000}
+  },
+  {
+    "name": "Gerbang Tol Waru",
+    "latitude": -7.3456,
+    "longitude": 112.7271,
+    "ruas": "Surabaya-Gempol",
+    "tarif": {"gol1": 5000, "gol2": 8000, "gol3": 10000, "gol4": 12000, "gol5": 15000}
+  },
+  {
+    "name": "Gerbang Tol Dupak",
+    "latitude": -7.2367,
+    "longitude": 112.7191,
+    "ruas": "Surabaya-Gempol",
+    "tarif": {"gol1": 5000, "gol2": 8000, "gol3": 10000, "gol4": 12000, "gol5": 15000}
+  },
+  {
+    "name": "Gerbang Tol Sidoarjo",
+    "latitude": -7.4467,
+    "longitude": 112.7142,
+    "ruas": "Surabaya-Gempol",
+    "tarif": {"gol1": 6000, "gol2": 9000, "gol3": 12000, "gol4": 15000, "gol5": 18000}
+  },
+  {
+    "name": "Gerbang Tol Kejapanan",
+    "latitude": -7.5292,
+    "longitude": 112.7139,
+    "ruas": "Surabaya-Gempol",
+    "tarif": {"gol1": 7000, "gol2": 10000, "gol3": 13000, "gol4": 16000, "gol5": 20000}
+  },
+  {
+    "name": "Gerbang Tol Satelit",
+    "latitude": -7.2828,
+    "longitude": 112.6871,
+    "ruas": "Surabaya-Gresik",
+    "tarif": {"gol1": 6000, "gol2": 9000, "gol3": 12000, "gol4": 15000, "gol5": 18000}
+  },
+  {
+    "name": "Gerbang Tol Romokalisari",
+    "latitude": -7.2105,
+    "longitude": 112.6467,
+    "ruas": "Surabaya-Gresik",
+    "tarif": {"gol1": 7000, "gol2": 10000, "gol3": 13000, "gol4": 16000, "gol5": 20000}
+  },
+  {
+    "name": "Gerbang Tol Cikarang Barat",
+    "latitude": -6.3049,
+    "longitude": 107.0952,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 15000, "gol2": 22500, "gol3": 30000, "gol4": 37500, "gol5": 45000}
+  },
+  {
+    "name": "Gerbang Tol Cikarang Timur",
+    "latitude": -6.3146,
+    "longitude": 107.1762,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 20000, "gol2": 30000, "gol3": 40000, "gol4": 50000, "gol5": 60000}
+  },
+  {
+    "name": "Gerbang Tol Karawang Barat",
+    "latitude": -6.3056,
+    "longitude": 107.2936,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 25000, "gol2": 37500, "gol3": 50000, "gol4": 62500, "gol5": 75000}
+  },
+  {
+    "name": "Gerbang Tol Karawang Timur",
+    "latitude": -6.3122,
+    "longitude": 107.3672,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 29000, "gol2": 43500, "gol3": 58000, "gol4": 72500, "gol5": 87000}
+  },
+  {
+    "name": "Gerbang Tol Cikampek",
+    "latitude": -6.4197,
+    "longitude": 107.4561,
+    "ruas": "Jakarta-Cikampek",
+    "tarif": {"gol1": 35000, "gol2": 52500, "gol3": 70000, "gol4": 87500, "gol5": 105000}
+  },
+  {
+    "name": "Gerbang Tol Cibubur",
+    "latitude": -6.3692,
+    "longitude": 106.8908,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 9000, "gol2": 13500, "gol3": 18000, "gol4": 22500, "gol5": 27000}
+  },
+  {
+    "name": "Gerbang Tol Cimanggis",
+    "latitude": -6.3676,
+    "longitude": 106.8728,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 12000, "gol2": 18000, "gol3": 24000, "gol4": 30000, "gol5": 36000}
+  },
+  {
+    "name": "Gerbang Tol Citeureup",
+    "latitude": -6.4886,
+    "longitude": 106.8722,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 14000, "gol2": 21000, "gol3": 28000, "gol4": 35000, "gol5": 42000}
+  },
+  {
+    "name": "Gerbang Tol Sentul",
+    "latitude": -6.5472,
+    "longitude": 106.8525,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 17000, "gol2": 25500, "gol3": 34000, "gol4": 42500, "gol5": 51000}
+  },
+  {
+    "name": "Gerbang Tol Bogor",
+    "latitude": -6.595,
+    "longitude": 106.8167,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 22000, "gol2": 33000, "gol3": 44000, "gol4": 55000, "gol5": 66000}
+  },
+  {
+    "name": "Gerbang Tol Ciawi",
+    "latitude": -6.6706,
+    "longitude": 106.8492,
+    "ruas": "Jagorawi",
+    "tarif": {"gol1": 26000, "gol2": 39000, "gol3": 52000, "gol4": 65000, "gol5": 78000}
+  }
+]

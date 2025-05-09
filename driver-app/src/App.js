@@ -20,6 +20,7 @@ import {
 import L from 'leaflet';
 import { getGeocode, getLatLng } from 'use-places-autocomplete';
 import { LoadScript } from '@react-google-maps/api';
+import axios from "axios";
 
 // Konstanta untuk libraries Google Maps agar tidak di-re-render
 const mapsLibraries = ['places'];
@@ -303,7 +304,21 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
   // Inisialisasi AutocompleteService saat Google Maps API dimuat
   useEffect(() => {
     if (window.google && window.google.maps && window.google.maps.places) {
-      autocompleteService.current = new window.google.maps.places.AutocompleteService();
+      try {
+        // Try using AutocompleteSuggestion (recommended by Google)
+        if (window.google.maps.places.AutocompleteSuggestion) {
+          console.log('Using recommended AutocompleteSuggestion API');
+          // This is where we would initialize AutocompleteSuggestion
+          // For now, we'll continue using AutocompleteService as a fallback
+          autocompleteService.current = new window.google.maps.places.AutocompleteService();
+        } else {
+          console.log('AutocompleteSuggestion not available, using AutocompleteService instead');
+          autocompleteService.current = new window.google.maps.places.AutocompleteService();
+        }
+      } catch (error) {
+        console.error('Error initializing Google Maps Places API:', error);
+        autocompleteService.current = null;
+      }
     }
   }, []);
 
@@ -426,7 +441,6 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
           {suggestions.map((suggestion) => {
             const { place_id, structured_formatting } = suggestion;
             const { main_text, secondary_text } = structured_formatting || { main_text: suggestion.description, secondary_text: '' };
-            
             return (
               <li
                 key={place_id}
@@ -467,26 +481,14 @@ function MapController({ position }) {
   return null;
 }
 
-// Data jenis kendaraan darat
+// Daftar tipe kendaraan beserta golongan tol
 const vehicleTypes = [
-  { id: 'car', name: 'Mobil Pribadi', tollMultiplier: 1 },
-  { id: 'suv', name: 'SUV/MPV', tollMultiplier: 1 },
-  { id: 'pickup', name: 'Pickup', tollMultiplier: 1.5 },
-  { id: 'truck_small', name: 'Truk Kecil', tollMultiplier: 1.5 },
-  { id: 'truck_medium', name: 'Truk Sedang', tollMultiplier: 2 },
-  { id: 'truck_large', name: 'Truk Besar', tollMultiplier: 2.5 },
-  { id: 'bus_small', name: 'Bus Kecil', tollMultiplier: 1.5 },
-  { id: 'bus_large', name: 'Bus Besar', tollMultiplier: 2 },
-];
-
-// Data contoh gerbang tol di Indonesia (untuk demo)
-const tollGates = [
-  { name: 'Gerbang Tol Waru', position: [-7.3467, 112.7267], baseCost: 7500 },
-  { name: 'Gerbang Tol Sidoarjo', position: [-7.4467, 112.7167], baseCost: 8500 },
-  { name: 'Gerbang Tol Porong', position: [-7.5467, 112.6967], baseCost: 9500 },
-  { name: 'Gerbang Tol Gempol', position: [-7.5567, 112.6867], baseCost: 10500 },
-  { name: 'Gerbang Tol Surabaya Barat', position: [-7.2767, 112.6867], baseCost: 11500 },
-  { name: 'Gerbang Tol Surabaya Timur', position: [-7.2667, 112.7867], baseCost: 12500 },
+  { label: 'Mobil', value: 'car', golonganTol: 'gol1' },
+  { label: 'Truk Kecil', value: 'small_truck', golonganTol: 'gol2' },
+  { label: 'Truk Sedang', value: 'medium_truck', golonganTol: 'gol3' },
+  { label: 'Truk Besar', value: 'large_truck', golonganTol: 'gol4' },
+  { label: 'Bus', value: 'bus', golonganTol: 'gol3' },
+  { label: 'Motor', value: 'motorcycle', golonganTol: 'gol1' }
 ];
 
 function App() {
@@ -512,10 +514,13 @@ function App() {
   
   // Tambahan state untuk kendaraan dan tol
   const [vehicleType, setVehicleType] = useState('car');
+  const [vehicleClass, setVehicleClass] = useState('gol1'); // default golongan tol
   const [nearestStartTollGate, setNearestStartTollGate] = useState(null);
   const [nearestEndTollGate, setNearestEndTollGate] = useState(null);
   const [estimatedTollCost, setEstimatedTollCost] = useState(null);
   const [useToll, setUseToll] = useState(true);
+  const [tollGates, setTollGates] = useState([]);
+  const [buttonHover, setButtonHover] = useState(false);
 
   // Initialize socket connection
   useEffect(() => {
@@ -586,6 +591,153 @@ function App() {
     };
   }, []);
 
+  // Ambil data gerbang tol dari API saat komponen mount
+  useEffect(() => {
+    /**
+     * Mengambil data gerbang tol dari API backend dan menyimpannya ke state tollGates
+     */
+    const fetchTollGates = async () => {
+      try {
+        console.log('Fetching toll gates data...');
+        
+        // Coba endpoint /api/toll-gates terlebih dahulu
+        try {
+          const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/toll-gates`);
+          if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+            console.log('Toll gates data received from /api/toll-gates:', response.data.length, 'gates');
+            setTollGates(response.data);
+            return;
+          }
+        } catch (primaryErr) {
+          console.warn('Failed to fetch from primary endpoint /api/toll-gates:', primaryErr.message);
+        }
+
+        // Jika endpoint pertama gagal, coba endpoint alternatif
+        try {
+          const altResponse = await axios.get(`${process.env.REACT_APP_API_URL}/toll/gates`);
+          if (altResponse.data && Array.isArray(altResponse.data) && altResponse.data.length > 0) {
+            console.log('Toll gates data received from /toll/gates:', altResponse.data.length, 'gates');
+            setTollGates(altResponse.data);
+            return;
+          }
+        } catch (altErr) {
+          console.warn('Failed to fetch from alternative endpoint /toll/gates:', altErr.message);
+        }
+
+        // Jika kedua endpoint gagal, gunakan data contoh
+        console.log('Using fallback sample toll gate data');
+        const sampleTollGates = [
+          { name: 'Gerbang Tol Waru', latitude: -7.3467, longitude: 112.7267, baseCost: 7500 },
+          { name: 'Gerbang Tol Sidoarjo', latitude: -7.4467, longitude: 112.7167, baseCost: 8500 },
+          { name: 'Gerbang Tol Porong', latitude: -7.5467, longitude: 112.6967, baseCost: 9500 },
+          { name: 'Gerbang Tol Gempol', latitude: -7.5567, longitude: 112.6867, baseCost: 10500 },
+          { name: 'Gerbang Tol Surabaya Barat', latitude: -7.2767, longitude: 112.6867, baseCost: 11500 },
+          { name: 'Gerbang Tol Surabaya Timur', latitude: -7.2667, longitude: 112.7867, baseCost: 12500 },
+        ];
+        setTollGates(sampleTollGates);
+      } catch (err) {
+        console.error('Completely failed to get toll gates data:', err);
+        setTollGates([]);
+      }
+    };
+    fetchTollGates();
+  }, []);
+
+  // Fungsi untuk mengirim request estimasi tarif tol ke API backend
+  const fetchTollEstimate = async (start, end, startTollGate, endTollGate) => {
+    try {
+      console.log('=== TOLL COST ESTIMATION ===');
+      console.log('Start toll gate:', startTollGate?.name);
+      console.log('End toll gate:', endTollGate?.name);
+      console.log('Vehicle class:', vehicleClass);
+      console.log('Vehicle type:', vehicleType);
+      
+      // ENDPOINT 2: API/CALCULATE-TOLL - ALWAYS TRY THIS ONE
+      console.log('Trying endpoint: /api/calculate-toll');
+      try {
+        // Build URL and parameters explicitly for debugging
+        const apiBaseUrl = process.env.REACT_APP_API_URL || '';
+        const endpoint = '/api/calculate-toll';
+        const url = `${apiBaseUrl}${endpoint}`;
+        console.log('Requesting from URL:', url);
+        
+        const params = {
+          startGate: startTollGate.name,
+          endGate: endTollGate.name,
+          vehicleType: vehicleType,
+          vehicleClass: vehicleClass
+        };
+        console.log('Request params:', params);
+        
+        const apiKey = process.env.REACT_APP_API_KEY || 'default-dev-key';
+        console.log('Using API key:', apiKey.substring(0, 3) + '...');
+        
+        // Make the actual API call
+        const response = await axios.get(url, {
+          params: params,
+          headers: {
+            'x-api-key': apiKey,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        console.log('API Response:', response.data);
+        
+        if (response.data && typeof response.data.cost === 'number') {
+          console.log('✅ Success! Toll cost estimate:', response.data.cost);
+          setEstimatedTollCost(response.data.cost);
+          return;
+        } else {
+          console.warn('⚠️ Response does not contain valid cost data:', response.data);
+        }
+      } catch (err) {
+        console.error('❌ Error calling /api/calculate-toll:', err.message);
+        console.error('Error details:', err);
+        
+        // Try alternative API as fallback
+        await tryAlternativeTollEstimate(start, end, startTollGate, endTollGate);
+      }
+    } catch (err) {
+      console.error('Fatal error in toll estimation:', err);
+      setEstimatedTollCost(null);
+    }
+  };
+  
+  // Helper function to try the alternative toll estimate endpoint
+  const tryAlternativeTollEstimate = async (start, end, startTollGate, endTollGate) => {
+    console.log('Trying alternative endpoint: /toll/estimate');
+    try {
+      const apiBaseUrl = process.env.REACT_APP_API_URL || '';
+      const url = `${apiBaseUrl}/toll/estimate`;
+      console.log('Requesting from URL:', url);
+      
+      const requestBody = {
+        start: start,
+        end: end,
+        golonganTol: vehicleClass,
+        startGate: startTollGate.name,
+        endGate: endTollGate.name
+      };
+      console.log('Request body:', requestBody);
+      
+      const response = await axios.post(url, requestBody);
+      console.log('API Response:', response.data);
+      
+      if (response.data && typeof response.data.cost === 'number') {
+        console.log('✅ Success! Toll cost estimate:', response.data.cost);
+        setEstimatedTollCost(response.data.cost);
+        return;
+      } else {
+        console.warn('⚠️ Response does not contain valid cost data:', response.data);
+        setEstimatedTollCost(null);
+      }
+    } catch (err) {
+      console.error('❌ Error calling alternative endpoint:', err.message);
+      console.error('Error details:', err);
+      setEstimatedTollCost(null);
+    }
+  };
+
   // Request location access and start tracking
   const startTracking = () => {
     if (!navigator.geolocation) {
@@ -593,15 +745,22 @@ function App() {
       return;
     }
     
+    // Show message that we're attempting to get location
+    setError('Requesting location access...');
+    
+    // Set more reasonable timeout - 10 seconds instead of 5
+    const locationTimeout = 10000; 
+    
     const id = navigator.geolocation.watchPosition(
       (position) => {
         const { latitude, longitude } = position.coords;
         const currentPosition = [latitude, longitude];
-        // console.log('Got position:', currentPosition);
+        console.log('Got position:', currentPosition);
         setPosition(currentPosition);
         setSpeed(position.coords.speed || 0);
         setHeading(position.coords.heading || 0);
         setLastUpdate(new Date().toLocaleTimeString());
+        setError(null); // Clear error on success
         
         // Send position to server if connected
         if (socket && connected) {
@@ -619,17 +778,26 @@ function App() {
       },
       (err) => {
         console.error('Geolocation error:', err);
-        setError(`Error getting location: ${err.message}`);
+        
+        // More user-friendly error messages
+        if (err.code === 1) {
+          setError('Location access denied. Please enable location services for this website.');
+        } else if (err.code === 2) {
+          setError('Location unavailable. Please try again or check your device settings.');
+        } else if (err.code === 3) {
+          setError('Location request timed out. Please check your connection and try again.');
+        } else {
+          setError(`Error getting location: ${err.message}`);
+        }
       },
       { 
         enableHighAccuracy: true, 
         maximumAge: 0,
-        timeout: process.env.REACT_APP_TIMEOUT ? parseInt(process.env.REACT_APP_TIMEOUT) : 5000
+        timeout: locationTimeout
       }
     );
     
     setWatchId(id);
-    setError(null);
   };
 
   // Stop tracking
@@ -724,62 +892,152 @@ function App() {
 
   // Fungsi untuk mencari gerbang tol terdekat dari suatu titik
   const findNearestTollGate = (point) => {
-    if (!point) return null;
-    
-    let nearestGate = null;
+    if (!point || tollGates.length === 0) return null;
+    let nearest = null;
     let minDistance = Infinity;
     
+    // Log untuk debugging
+    console.log('Finding nearest toll gate for point:', point);
+    
+    // Periksa struktur data tollGates
     tollGates.forEach(gate => {
-      const distance = calculateDistance(point, gate.position);
-      if (distance < minDistance) {
-        minDistance = distance;
-        nearestGate = { ...gate, distance };
+      // Adaptasi untuk berbagai format data yang mungkin diterima dari API
+      const latitude = gate.latitude || gate.lat || (gate.position ? gate.position[0] : null);
+      const longitude = gate.longitude || gate.lng || (gate.position ? gate.position[1] : null);
+      
+      // Jika latitude dan longitude valid
+      if (latitude !== null && longitude !== null) {
+        const gatePos = [latitude, longitude];
+        const distance = calculateDistance(point, gatePos);
+        
+        if (distance < minDistance) {
+          minDistance = distance;
+          nearest = { ...gate, distance };
+        }
       }
     });
     
-    // Hanya kembalikan gerbang tol jika jaraknya kurang dari 20km
-    return minDistance < 20 ? nearestGate : null;
+    // Return the nearest toll gate regardless of distance
+    // This allows toll calculation between cities that might be far from toll gates
+    if (nearest) {
+      console.log('Nearest toll gate found:', nearest.name, 'at distance:', nearest.distance.toFixed(2), 'km');
+      return nearest;
+    }
+    
+    console.log('No toll gate found');
+    return null;
   };
 
   // Calculate route information (distance, duration, and toll info)
-  const calculateRouteInfo = (start, end) => {
+  const calculateRouteInfo = async (start, end) => {
+    console.log('Calculating route info between:', start, 'and', end);
+    
     // Calculate distance in kilometers using Haversine formula
     const distance = calculateDistance(start, end);
     setRouteDistance(distance);
+    console.log('Route distance:', distance.toFixed(2), 'km');
     
     // Estimate duration based on average speed (50 km/h)
     const avgSpeedKmh = 50;
     const durationHours = distance / avgSpeedKmh;
     const durationMinutes = Math.round(durationHours * 60);
     setRouteDuration(durationMinutes);
+    console.log('Estimated duration:', durationMinutes, 'minutes');
     
     // Find nearest toll gates to start and end points
+    console.log('Finding nearest toll gates...');
     const startTollGate = findNearestTollGate(start);
     const endTollGate = findNearestTollGate(end);
     
     setNearestStartTollGate(startTollGate);
     setNearestEndTollGate(endTollGate);
     
-    // Calculate estimated toll cost if both toll gates are found
-    if (startTollGate && endTollGate && useToll) {
-      // Get vehicle toll multiplier
-      const selectedVehicle = vehicleTypes.find(v => v.id === vehicleType);
-      const multiplier = selectedVehicle ? selectedVehicle.tollMultiplier : 1;
-      
-      // Base cost calculation (simplified for demo)
-      const baseCost = Math.abs(endTollGate.baseCost - startTollGate.baseCost);
-      const distanceCost = distance * 300; // Rp 300 per km
-      
-      // Apply vehicle type multiplier
-      const totalCost = Math.round((baseCost + distanceCost) * multiplier);
-      setEstimatedTollCost(totalCost);
+    // Always call toll price API if toll is enabled, using the nearest gates
+    // regardless of distance
+    if (useToll) {
+      console.log('Toll is enabled, checking gates...');
+      if (startTollGate && endTollGate) {
+        console.log('Both toll gates found, calling toll price API');
+        console.log('Start gate:', startTollGate.name, 'End gate:', endTollGate.name);
+        
+        // Directly call the API with explicit parameters
+        console.log('*** MAKING DIRECT API CALL ***');
+        try {
+          // Build the URL and parameters
+          const apiBaseUrl = process.env.REACT_APP_API_URL || '';
+          const url = `${apiBaseUrl}/api/calculate-toll`;
+          
+          const params = {
+            startGate: startTollGate.name,
+            endGate: endTollGate.name,
+            vehicleType: vehicleType,
+            vehicleClass: vehicleClass
+          };
+          
+          console.log('URL:', url);
+          console.log('Params:', params);
+          
+          // Add API key if available
+          const apiKey = process.env.REACT_APP_API_KEY || 'default-dev-key';
+          const headers = {
+            'x-api-key': apiKey,
+            'Content-Type': 'application/json'
+          };
+          
+          // Make the API call
+          const response = await axios.get(url, { params, headers });
+          
+          console.log('API Response:', response.data);
+          
+          if (response.data && typeof response.data.cost === 'number') {
+            console.log('Toll cost estimate:', response.data.cost);
+            setEstimatedTollCost(response.data.cost);
+          } else {
+            console.warn('Invalid response format:', response.data);
+            setEstimatedTollCost(null);
+          }
+        } catch (error) {
+          console.error('API call failed:', error);
+          setEstimatedTollCost(null);
+          
+          // Try alternative API as fallback
+          try {
+            const apiBaseUrl = process.env.REACT_APP_API_URL || '';
+            const url = `${apiBaseUrl}/toll/estimate`;
+            
+            const requestBody = {
+              start: start,
+              end: end,
+              golonganTol: vehicleClass,
+              startGate: startTollGate.name,
+              endGate: endTollGate.name
+            };
+            
+            console.log('Trying alternative endpoint:', url);
+            console.log('Request body:', requestBody);
+            
+            const response = await axios.post(url, requestBody);
+            console.log('Alternative API Response:', response.data);
+            
+            if (response.data && typeof response.data.cost === 'number') {
+              console.log('Toll cost estimate (alternative):', response.data.cost);
+              setEstimatedTollCost(response.data.cost);
+            }
+          } catch (altError) {
+            console.error('Alternative API call failed:', altError);
+          }
+        }
+      } else {
+        console.warn('Cannot calculate toll: missing gates',
+          startTollGate ? 'OK' : 'X', 
+          endTollGate ? 'OK' : 'X');
+        setEstimatedTollCost(null);
+      }
     } else {
+      console.log('Toll is disabled, skipping toll calculation');
       setEstimatedTollCost(null);
     }
   };
-
-  // Button hover states
-  const [buttonHover, setButtonHover] = useState(false);
 
   return (
     <LoadScript
@@ -914,9 +1172,17 @@ function App() {
                           type="checkbox" 
                           checked={useToll}
                           onChange={() => {
-                            setUseToll(!useToll);
+                            const newUseToll = !useToll;
+                            setUseToll(newUseToll);
                             if (startPoint && endPoint) {
+                              // Recalculate route info when toll preference changes
                               calculateRouteInfo(startPoint, endPoint);
+                              
+                              // Additional manual call to fetch toll estimates if we're enabling toll
+                              if (newUseToll && nearestStartTollGate && nearestEndTollGate) {
+                                console.log('Calling toll price API directly from toggle...');
+                                fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                              }
                             }
                           }}
                           style={{
@@ -973,33 +1239,86 @@ function App() {
                         <div style={styles.statusLabel}>Gerbang Tol Masuk</div>
                         <div>{nearestStartTollGate.name}</div>
                         <div style={{fontSize: '12px', color: '#9ca3af', marginTop: '4px'}}>
-                          Jarak: {nearestStartTollGate.distance.toFixed(1)} km
+                          Jarak: {typeof nearestStartTollGate.distance === 'number' && !isNaN(nearestStartTollGate.distance) ? nearestStartTollGate.distance.toFixed(1) : '-'} km
                         </div>
                       </div>
                     )}
-                    
                     {nearestEndTollGate && (
                       <div style={styles.card}>
                         <div style={styles.statusLabel}>Gerbang Tol Keluar</div>
                         <div>{nearestEndTollGate.name}</div>
                         <div style={{fontSize: '12px', color: '#9ca3af', marginTop: '4px'}}>
-                          Jarak: {nearestEndTollGate.distance.toFixed(1)} km
+                          Jarak: {typeof nearestEndTollGate.distance === 'number' && !isNaN(nearestEndTollGate.distance) ? nearestEndTollGate.distance.toFixed(1) : '-'} km
                         </div>
                       </div>
                     )}
-                    
-                    {estimatedTollCost && (
+                    {(typeof estimatedTollCost === 'number' && !isNaN(estimatedTollCost)) ? (
                       <div style={{...styles.card, backgroundColor: '#1d4ed8'}}>
-                        <div style={styles.statusLabel}>Perkiraan Biaya Tol</div>
+                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                          <div style={styles.statusLabel}>Perkiraan Biaya Tol</div>
+                          <button 
+                            onClick={() => {
+                              console.log('Manual refresh of toll cost');
+                              if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
+                                fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#93c5fd',
+                              padding: '0',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}
+                            title="Refresh toll cost estimate"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        </div>
                         <div style={{fontSize: '18px', fontWeight: 'bold'}}>
                           Rp {estimatedTollCost.toLocaleString('id-ID')}
                         </div>
                         <div style={{fontSize: '12px', color: '#93c5fd', marginTop: '4px'}}>
-                          Untuk kendaraan: {vehicleTypes.find(v => v.id === vehicleType)?.name}
+                          Untuk kendaraan golongan: {vehicleClass}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{...styles.card, backgroundColor: '#fbbf24', color: '#1f2937'}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                          <div style={{...styles.statusLabel, color: '#1f2937'}}>Perkiraan Biaya Tol</div>
+                          <button 
+                            onClick={() => {
+                              console.log('Manual refresh of toll cost');
+                              if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
+                                fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                              } else {
+                                console.warn('Cannot refresh - missing required data');
+                              }
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              color: '#1f2937',
+                              padding: '0',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}
+                            title="Refresh toll cost estimate"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                        </div>
+                        <div style={{fontSize: '14px', fontWeight: 'bold'}}>
+                          Biaya tol belum tersedia
+                        </div>
+                        <div style={{fontSize: '12px', marginTop: '4px'}}>
+                          Klik refresh atau ubah rute untuk mencoba lagi
                         </div>
                       </div>
                     )}
-                    
                     {!nearestStartTollGate && !nearestEndTollGate && (
                       <div style={styles.card}>
                         <div style={{textAlign: 'center', color: '#9ca3af'}}>
@@ -1015,9 +1334,8 @@ function App() {
           
           {/* Error message */}
           {error && (
-            <div style={styles.errorBox}>
-              <div style={styles.errorTitle}>Error</div>
-              <div style={styles.errorText}>{error}</div>
+            <div className="bg-red-100 text-red-700 p-2 rounded mt-2 text-center">
+              {error}
             </div>
           )}
         </div>
@@ -1033,124 +1351,195 @@ function App() {
               placeholder="Enter driver ID"
             />
             
-            {/* Dropdown jenis kendaraan */}
-            <select 
-              value={vehicleType}
-              onChange={(e) => {
-                setVehicleType(e.target.value);
-                // Recalculate toll cost when vehicle type changes
-                if (startPoint && endPoint && useToll) {
-                  calculateRouteInfo(startPoint, endPoint);
-                }
-              }}
-              style={{
-                ...styles.input,
-                marginBottom: '12px',
-                appearance: 'none',
-                backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 12px top 50%',
-                backgroundSize: '12px auto',
-                paddingRight: '30px'
-              }}
-            >
-              {vehicleTypes.map(vehicle => (
-                <option key={vehicle.id} value={vehicle.id}>
-                  {vehicle.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          
-          {/* Route inputs */}
-          <div style={{...styles.sectionTitle, marginTop: '12px', marginBottom: '12px', fontSize: '16px'}}>
-            <MapPinned size={16} /> Rute Perjalanan
-          </div>
-          
-          <div style={styles.inputGroup}>
-            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
-              {isScriptLoaded ? (
-                <PlacesAutocomplete
-                  placeholder="Lokasi Awal"
-                  value={startAddress}
-                  onChange={handleStartAddressChange}
-                  onSelect={handleStartLocationSelect}
-                  style={{...styles.input, marginBottom: '0', flex: 1}}
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={startAddress}
-                  onChange={handleStartAddressChange}
-                  style={{...styles.input, marginBottom: '0', flex: 1}}
-                  placeholder="Lokasi Awal (memuat...)"
-                  disabled
-                />
-              )}
-              <button 
-                onClick={setCurrentAsStart}
-                style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
-                title="Gunakan lokasi saat ini"
+            <div className="mb-4">
+              <label htmlFor="vehicleClass" className="block text-sm font-medium text-gray-200 mb-1">Golongan Kendaraan (Tol)</label>
+              <select
+                id="vehicleClass"
+                value={vehicleClass}
+                onChange={e => {
+                  setVehicleClass(e.target.value);
+                  // Refresh toll estimate if we already have a route
+                  if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate && useToll) {
+                    console.log('Vehicle class changed, recalculating toll cost');
+                    // Short delay to ensure state updates
+                    setTimeout(() => {
+                      fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                    }, 100);
+                  }
+                }}
+                className="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
               >
-                <MapPin size={16} />
+                <option value="gol1">Golongan 1 (Sedan/Jeep/Minibus/Pickup)</option>
+                <option value="gol2">Golongan 2 (Truk dengan 2 sumbu)</option>
+                <option value="gol3">Golongan 3 (Truk dengan 3 sumbu)</option>
+                <option value="gol4">Golongan 4 (Truk dengan 4 sumbu)</option>
+                <option value="gol5">Golongan 5 (Truk dengan 5 sumbu atau lebih)</option>
+              </select>
+              
+              {/* Debug button for direct API call */}
+              <button
+                onClick={() => {
+                  console.log('🔄 FORCING DIRECT API CALL');
+                  
+                  try {
+                    // Build the URL and parameters
+                    const apiBaseUrl = process.env.REACT_APP_API_URL || '';
+                    const url = `${apiBaseUrl}/api/calculate-toll`;
+                    
+                    // Use fixed test values if actual data is missing
+                    const startGate = nearestStartTollGate?.name || 'Gerbang Tol Waru';
+                    const endGate = nearestEndTollGate?.name || 'Gerbang Tol Sidoarjo';
+                    
+                    const params = {
+                      startGate: startGate,
+                      endGate: endGate,
+                      vehicleType: vehicleType || 'car',
+                      vehicleClass: vehicleClass || 'gol1'
+                    };
+                    
+                    console.log('URL:', url);
+                    console.log('Params:', params);
+                    
+                    // Add API key if available
+                    const apiKey = process.env.REACT_APP_API_KEY || 'default-dev-key';
+                    const headers = {
+                      'x-api-key': apiKey,
+                      'Content-Type': 'application/json'
+                    };
+                    
+                    console.log('Headers:', headers);
+                    
+                    // Make the direct API call
+                    axios.get(url, { params, headers })
+                      .then(response => {
+                        console.log('Direct API Response:', response.data);
+                        
+                        if (response.data && typeof response.data.cost === 'number') {
+                          setEstimatedTollCost(response.data.cost);
+                          alert('API call successful! Cost: ' + response.data.cost);
+                        } else {
+                          console.warn('Invalid response format:', response.data);
+                          alert('API responded but no valid cost data');
+                        }
+                      })
+                      .catch(error => {
+                        console.error('Direct API call failed:', error);
+                        alert('API call failed: ' + error.message);
+                      });
+                  } catch (error) {
+                    console.error('Error in direct API call:', error);
+                    alert('Error setting up API call: ' + error.message);
+                  }
+                }}
+                style={{
+                  backgroundColor: '#475569',
+                  color: 'white',
+                  padding: '6px 10px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <RefreshCw size={14} /> Test Direct API Call
               </button>
             </div>
             
-            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
-              {isScriptLoaded ? (
-                <PlacesAutocomplete
-                  placeholder="Tujuan"
-                  value={endAddress}
-                  onChange={handleEndAddressChange}
-                  onSelect={handleEndLocationSelect}
-                  style={{...styles.input, marginBottom: '0', flex: 1}}
-                />
-              ) : (
-                <input
-                  type="text"
-                  value={endAddress}
-                  onChange={handleEndAddressChange}
-                  style={{...styles.input, marginBottom: '0', flex: 1}}
-                  placeholder="Tujuan (memuat...)"
-                  disabled
-                />
+            {/* Route inputs */}
+            <div style={{...styles.sectionTitle, marginTop: '12px', marginBottom: '12px', fontSize: '16px'}}>
+              <MapPinned size={16} /> Rute Perjalanan
+            </div>
+            
+            <div style={styles.inputGroup}>
+              <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                {isScriptLoaded ? (
+                  <PlacesAutocomplete
+                    placeholder="Lokasi Awal"
+                    value={startAddress}
+                    onChange={handleStartAddressChange}
+                    onSelect={handleStartLocationSelect}
+                    style={{...styles.input, marginBottom: '0', flex: 1}}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={startAddress}
+                    onChange={handleStartAddressChange}
+                    style={{...styles.input, marginBottom: '0', flex: 1}}
+                    placeholder="Lokasi Awal (memuat...)"
+                    disabled
+                  />
+                )}
+                <button 
+                  onClick={setCurrentAsStart}
+                  style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
+                  title="Gunakan lokasi saat ini"
+                >
+                  <MapPin size={16} />
+                </button>
+              </div>
+              
+              <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+                {isScriptLoaded ? (
+                  <PlacesAutocomplete
+                    placeholder="Tujuan"
+                    value={endAddress}
+                    onChange={handleEndAddressChange}
+                    onSelect={handleEndLocationSelect}
+                    style={{...styles.input, marginBottom: '0', flex: 1}}
+                  />
+                ) : (
+                  <input
+                    type="text"
+                    value={endAddress}
+                    onChange={handleEndAddressChange}
+                    style={{...styles.input, marginBottom: '0', flex: 1}}
+                    placeholder="Tujuan (memuat...)"
+                    disabled
+                  />
+                )}
+                <button 
+                  onClick={setManualEndPoint}
+                  style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
+                  title="Pilih titik di peta"
+                >
+                  <Target size={16} />
+                </button>
+              </div>
+              
+              {(startPoint && endPoint) && (
+                <button 
+                  onClick={clearRoute}
+                  style={{...styles.button, backgroundColor: '#6b7280', marginTop: '8px', padding: '8px'}}
+                >
+                  <span>Hapus Rute</span>
+                </button>
               )}
-              <button 
-                onClick={setManualEndPoint}
-                style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
-                title="Pilih titik di peta"
-              >
-                <Target size={16} />
-              </button>
             </div>
             
             {(startPoint && endPoint) && (
               <button 
-                onClick={clearRoute}
-                style={{...styles.button, backgroundColor: '#6b7280', marginTop: '8px', padding: '8px'}}
+                onClick={watchId === null ? startTracking : stopTracking} 
+                style={{
+                  ...styles.button,
+                  ...(watchId === null ? {} : styles.buttonRed),
+                  ...(buttonHover ? (watchId === null ? styles.buttonHover : styles.buttonRedHover) : {}),
+                  marginTop: '12px'
+                }}
+                onMouseEnter={() => setButtonHover(true)}
+                onMouseLeave={() => setButtonHover(false)}
               >
-                <span>Hapus Rute</span>
+                {watchId === null ? (
+                  <><span>Start Tracking</span> <ArrowRight size={18} /></>
+                ) : (
+                  <><span>Stop Tracking</span> <RefreshCw size={18} /></>
+                )}
               </button>
             )}
           </div>
-          
-          <button 
-            onClick={watchId === null ? startTracking : stopTracking} 
-            style={{
-              ...styles.button,
-              ...(watchId === null ? {} : styles.buttonRed),
-              ...(buttonHover ? (watchId === null ? styles.buttonHover : styles.buttonRedHover) : {}),
-              marginTop: '12px'
-            }}
-            onMouseEnter={() => setButtonHover(true)}
-            onMouseLeave={() => setButtonHover(false)}
-          >
-            {watchId === null ? (
-              <><span>Start Tracking</span> <ArrowRight size={18} /></>
-            ) : (
-              <><span>Stop Tracking</span> <RefreshCw size={18} /></>
-            )}
-          </button>
         </div>
       </div>
       

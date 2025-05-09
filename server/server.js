@@ -89,6 +89,24 @@ app.get("/api/drivers/:driverId", authenticateAPI, (req, res) => {
   res.json({ driver: activeDrivers[driverId] });
 });
 
+// API untuk menghitung biaya tol berdasarkan gerbang masuk, keluar, dan jenis kendaraan
+const { calculateTollCost } = require("./tollgateModel");
+app.get("/api/calculate-toll", authenticateAPI, (req, res) => {
+  /**
+   * Endpoint untuk menghitung biaya tol
+   * Query: startGate, endGate, vehicleType
+   */
+  const { startGate, endGate, vehicleType } = req.query;
+  if (!startGate || !endGate || !vehicleType) {
+    return res.status(400).json({ error: "Parameter startGate, endGate, dan vehicleType wajib diisi" });
+  }
+  const cost = calculateTollCost(startGate, endGate, vehicleType);
+  if (cost === null) {
+    return res.status(404).json({ error: "Data biaya tol tidak ditemukan untuk kombinasi tersebut" });
+  }
+  res.json({ startGate, endGate, vehicleType, tollCost: cost });
+});
+
 // API to get driver history for a specific time period
 app.get("/api/history/:driverId", authenticateAPI, (req, res) => {
   const driverId = req.params.driverId;
@@ -373,6 +391,19 @@ if (enableSampleData) {
     console.log('No sample data found or invalid format, disabling sample data');
   }
 }
+
+// Endpoint API untuk mengambil seluruh data gerbang tol Trans Jawa beserta tarif sesuai golongan kendaraan
+const tollgateModel = require('./tollgateModel');
+
+/**
+ * Mengembalikan seluruh data gerbang tol Trans Jawa
+ */
+app.get('/api/toll-gates', (req, res) => {
+  // Ambil parameter golongan kendaraan dari query string, misal: gol1, gol2, dst
+  const vehicleClass = req.query.vehicleClass;
+  const tollgates = tollgateModel.getAllTollgates(vehicleClass);
+  res.json(tollgates);
+});
 
 // Start the server
 server.listen(config.server.port, config.server.host, () => {
