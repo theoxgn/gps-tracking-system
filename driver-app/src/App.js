@@ -21,6 +21,9 @@ import L from 'leaflet';
 import { getGeocode, getLatLng } from 'use-places-autocomplete';
 import { LoadScript } from '@react-google-maps/api';
 
+// Konstanta untuk libraries Google Maps agar tidak di-re-render
+const mapsLibraries = ['places'];
+
 // Fix for default marker icons in Leaflet with React
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -286,9 +289,8 @@ const styles = {
   }
 };
 
-// Ganti nilai hardcoded dengan variabel environment
 const SERVER_URL = process.env.REACT_APP_API_URL;
-const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY; 
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
 // Komponen untuk input alamat dengan autocomplete menggunakan AutocompleteSuggestion yang direkomendasikan Google
 const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) => {
@@ -465,6 +467,28 @@ function MapController({ position }) {
   return null;
 }
 
+// Data jenis kendaraan darat
+const vehicleTypes = [
+  { id: 'car', name: 'Mobil Pribadi', tollMultiplier: 1 },
+  { id: 'suv', name: 'SUV/MPV', tollMultiplier: 1 },
+  { id: 'pickup', name: 'Pickup', tollMultiplier: 1.5 },
+  { id: 'truck_small', name: 'Truk Kecil', tollMultiplier: 1.5 },
+  { id: 'truck_medium', name: 'Truk Sedang', tollMultiplier: 2 },
+  { id: 'truck_large', name: 'Truk Besar', tollMultiplier: 2.5 },
+  { id: 'bus_small', name: 'Bus Kecil', tollMultiplier: 1.5 },
+  { id: 'bus_large', name: 'Bus Besar', tollMultiplier: 2 },
+];
+
+// Data contoh gerbang tol di Indonesia (untuk demo)
+const tollGates = [
+  { name: 'Gerbang Tol Waru', position: [-7.3467, 112.7267], baseCost: 7500 },
+  { name: 'Gerbang Tol Sidoarjo', position: [-7.4467, 112.7167], baseCost: 8500 },
+  { name: 'Gerbang Tol Porong', position: [-7.5467, 112.6967], baseCost: 9500 },
+  { name: 'Gerbang Tol Gempol', position: [-7.5567, 112.6867], baseCost: 10500 },
+  { name: 'Gerbang Tol Surabaya Barat', position: [-7.2767, 112.6867], baseCost: 11500 },
+  { name: 'Gerbang Tol Surabaya Timur', position: [-7.2667, 112.7867], baseCost: 12500 },
+];
+
 function App() {
   const [position, setPosition] = useState([-7.2575, 112.7521]); // Default position (Sidoarjo, East Java)
   const [connected, setConnected] = useState(false);
@@ -485,6 +509,13 @@ function App() {
   const [routeDistance, setRouteDistance] = useState(null);
   const [routeDuration, setRouteDuration] = useState(null);
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
+  
+  // Tambahan state untuk kendaraan dan tol
+  const [vehicleType, setVehicleType] = useState('car');
+  const [nearestStartTollGate, setNearestStartTollGate] = useState(null);
+  const [nearestEndTollGate, setNearestEndTollGate] = useState(null);
+  const [estimatedTollCost, setEstimatedTollCost] = useState(null);
+  const [useToll, setUseToll] = useState(true);
 
   // Initialize socket connection
   useEffect(() => {
@@ -513,7 +544,7 @@ function App() {
     const timer = setTimeout(() => {
       if (mapRef.current) {
         mapRef.current.invalidateSize();
-        console.log("Map size invalidated");
+        // console.log("Map size invalidated");
       }
     }, 500);
     
@@ -566,7 +597,7 @@ function App() {
       (position) => {
         const { latitude, longitude } = position.coords;
         const currentPosition = [latitude, longitude];
-        console.log('Got position:', currentPosition);
+        // console.log('Got position:', currentPosition);
         setPosition(currentPosition);
         setSpeed(position.coords.speed || 0);
         setHeading(position.coords.heading || 0);
@@ -678,27 +709,73 @@ function App() {
     setRouteDuration(null);
   };
   
-  // Calculate route information (distance and estimated duration)
-  const calculateRouteInfo = (start, end) => {
-    // Calculate distance in kilometers using Haversine formula
+  // Fungsi untuk menghitung jarak antara dua titik (Haversine formula)
+  const calculateDistance = (point1, point2) => {
     const R = 6371; // Earth's radius in km
-    const dLat = (end[0] - start[0]) * Math.PI / 180;
-    const dLon = (end[1] - start[1]) * Math.PI / 180;
+    const dLat = (point2[0] - point1[0]) * Math.PI / 180;
+    const dLon = (point2[1] - point1[1]) * Math.PI / 180;
     const a = 
       Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(start[0] * Math.PI / 180) * Math.cos(end[0] * Math.PI / 180) * 
+      Math.cos(point1[0] * Math.PI / 180) * Math.cos(point2[0] * Math.PI / 180) * 
       Math.sin(dLon/2) * Math.sin(dLon/2); 
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
-    const distance = R * c;
+    return R * c; // jarak dalam kilometer
+  };
+
+  // Fungsi untuk mencari gerbang tol terdekat dari suatu titik
+  const findNearestTollGate = (point) => {
+    if (!point) return null;
     
+    let nearestGate = null;
+    let minDistance = Infinity;
+    
+    tollGates.forEach(gate => {
+      const distance = calculateDistance(point, gate.position);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestGate = { ...gate, distance };
+      }
+    });
+    
+    // Hanya kembalikan gerbang tol jika jaraknya kurang dari 20km
+    return minDistance < 20 ? nearestGate : null;
+  };
+
+  // Calculate route information (distance, duration, and toll info)
+  const calculateRouteInfo = (start, end) => {
+    // Calculate distance in kilometers using Haversine formula
+    const distance = calculateDistance(start, end);
     setRouteDistance(distance);
     
     // Estimate duration based on average speed (50 km/h)
     const avgSpeedKmh = 50;
     const durationHours = distance / avgSpeedKmh;
     const durationMinutes = Math.round(durationHours * 60);
-    
     setRouteDuration(durationMinutes);
+    
+    // Find nearest toll gates to start and end points
+    const startTollGate = findNearestTollGate(start);
+    const endTollGate = findNearestTollGate(end);
+    
+    setNearestStartTollGate(startTollGate);
+    setNearestEndTollGate(endTollGate);
+    
+    // Calculate estimated toll cost if both toll gates are found
+    if (startTollGate && endTollGate && useToll) {
+      // Get vehicle toll multiplier
+      const selectedVehicle = vehicleTypes.find(v => v.id === vehicleType);
+      const multiplier = selectedVehicle ? selectedVehicle.tollMultiplier : 1;
+      
+      // Base cost calculation (simplified for demo)
+      const baseCost = Math.abs(endTollGate.baseCost - startTollGate.baseCost);
+      const distanceCost = distance * 300; // Rp 300 per km
+      
+      // Apply vehicle type multiplier
+      const totalCost = Math.round((baseCost + distanceCost) * multiplier);
+      setEstimatedTollCost(totalCost);
+    } else {
+      setEstimatedTollCost(null);
+    }
   };
 
   // Button hover states
@@ -707,7 +784,7 @@ function App() {
   return (
     <LoadScript
       googleMapsApiKey={GOOGLE_MAPS_API_KEY}
-      libraries={['places']}
+      libraries={mapsLibraries}
       onLoad={() => setIsScriptLoaded(true)}
     >
       <div style={styles.container}>
@@ -817,6 +894,121 @@ function App() {
                   <div style={styles.statusLabel}>Perkiraan Waktu</div>
                   <div>{routeDuration ? routeDuration + ' menit' : 'Menghitung...'}</div>
                 </div>
+                
+                {/* Informasi Tol */}
+                <div style={{...styles.sectionTitle, marginTop: '12px', fontSize: '16px'}}>
+                  <MapPinned size={16} /> Informasi Tol
+                </div>
+                
+                <div style={{...styles.card, marginBottom: '8px'}}>
+                  <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
+                    <div style={styles.statusLabel}>Gunakan Tol</div>
+                    <div>
+                      <label className="switch" style={{
+                        position: 'relative',
+                        display: 'inline-block',
+                        width: '40px',
+                        height: '20px'
+                      }}>
+                        <input 
+                          type="checkbox" 
+                          checked={useToll}
+                          onChange={() => {
+                            setUseToll(!useToll);
+                            if (startPoint && endPoint) {
+                              calculateRouteInfo(startPoint, endPoint);
+                            }
+                          }}
+                          style={{
+                            opacity: 0,
+                            width: 0,
+                            height: 0
+                          }}
+                        />
+                        <span style={{
+                          position: 'absolute',
+                          cursor: 'pointer',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          backgroundColor: useToll ? '#3b82f6' : '#374151',
+                          transition: '.4s',
+                          borderRadius: '34px',
+                          '&:before': {
+                            position: 'absolute',
+                            content: '""',
+                            height: '16px',
+                            width: '16px',
+                            left: '2px',
+                            bottom: '2px',
+                            backgroundColor: 'white',
+                            transition: '.4s',
+                            borderRadius: '50%',
+                            transform: useToll ? 'translateX(20px)' : 'translateX(0)'
+                          }
+                        }}>
+                          <div style={{
+                            position: 'absolute',
+                            content: '""',
+                            height: '16px',
+                            width: '16px',
+                            left: '2px',
+                            bottom: '2px',
+                            backgroundColor: 'white',
+                            transition: '.4s',
+                            borderRadius: '50%',
+                            transform: useToll ? 'translateX(20px)' : 'translateX(0)'
+                          }}></div>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                
+                {useToll && (
+                  <>
+                    {nearestStartTollGate && (
+                      <div style={styles.card}>
+                        <div style={styles.statusLabel}>Gerbang Tol Masuk</div>
+                        <div>{nearestStartTollGate.name}</div>
+                        <div style={{fontSize: '12px', color: '#9ca3af', marginTop: '4px'}}>
+                          Jarak: {nearestStartTollGate.distance.toFixed(1)} km
+                        </div>
+                      </div>
+                    )}
+                    
+                    {nearestEndTollGate && (
+                      <div style={styles.card}>
+                        <div style={styles.statusLabel}>Gerbang Tol Keluar</div>
+                        <div>{nearestEndTollGate.name}</div>
+                        <div style={{fontSize: '12px', color: '#9ca3af', marginTop: '4px'}}>
+                          Jarak: {nearestEndTollGate.distance.toFixed(1)} km
+                        </div>
+                      </div>
+                    )}
+                    
+                    {estimatedTollCost && (
+                      <div style={{...styles.card, backgroundColor: '#1d4ed8'}}>
+                        <div style={styles.statusLabel}>Perkiraan Biaya Tol</div>
+                        <div style={{fontSize: '18px', fontWeight: 'bold'}}>
+                          Rp {estimatedTollCost.toLocaleString('id-ID')}
+                        </div>
+                        <div style={{fontSize: '12px', color: '#93c5fd', marginTop: '4px'}}>
+                          Untuk kendaraan: {vehicleTypes.find(v => v.id === vehicleType)?.name}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {!nearestStartTollGate && !nearestEndTollGate && (
+                      <div style={styles.card}>
+                        <div style={{textAlign: 'center', color: '#9ca3af'}}>
+                          Tidak ada gerbang tol terdekat
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
           </div>
@@ -840,6 +1032,34 @@ function App() {
               style={styles.input}
               placeholder="Enter driver ID"
             />
+            
+            {/* Dropdown jenis kendaraan */}
+            <select 
+              value={vehicleType}
+              onChange={(e) => {
+                setVehicleType(e.target.value);
+                // Recalculate toll cost when vehicle type changes
+                if (startPoint && endPoint && useToll) {
+                  calculateRouteInfo(startPoint, endPoint);
+                }
+              }}
+              style={{
+                ...styles.input,
+                marginBottom: '12px',
+                appearance: 'none',
+                backgroundImage: 'url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23FFFFFF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E")',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 12px top 50%',
+                backgroundSize: '12px auto',
+                paddingRight: '30px'
+              }}
+            >
+              {vehicleTypes.map(vehicle => (
+                <option key={vehicle.id} value={vehicle.id}>
+                  {vehicle.name}
+                </option>
+              ))}
+            </select>
           </div>
           
           {/* Route inputs */}
