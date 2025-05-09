@@ -16,14 +16,49 @@ L.Icon.Default.mergeOptions({
 // Ganti nilai hardcoded dengan variabel environment
 const SERVER_URL = process.env.REACT_APP_API_URL;
 
-// Custom marker with rotation for direction
-const createCustomIcon = (color) => {
+// Custom truck icon with rotation for direction
+const createCustomIcon = (color, heading = 0) => {
+  // Use vibrant colors based on active state
+  const truckColor = color === '#2563eb' ? '#FF9900' : '#E67E22'; // Bright orange for active, darker orange for inactive
+  const cabinColor = color === '#2563eb' ? '#333333' : '#555555'; // Dark cabin color
+  
+  // Create SVG truck icon with rotation based on the dumping truck image
+  const truckSvg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 80" 
+         style="transform: rotate(${heading}deg); transform-origin: center;" width="48" height="40">
+      <!-- Truck body/bed -->
+      <path d="M10,50 L20,30 L50,30 L65,15 L80,15 L80,30 L85,30 L85,50 L10,50 Z" fill="${truckColor}" stroke="#333" stroke-width="2" />
+      
+      <!-- Cabin -->
+      <path d="M10,50 L10,30 L20,30 L20,50 Z" fill="${cabinColor}" stroke="#333" stroke-width="2" />
+      
+      <!-- Window in cabin -->
+      <rect x="12" y="33" width="6" height="7" fill="white" stroke="#333" stroke-width="1" />
+      
+      <!-- Stripes in truck bed -->
+      <rect x="25" y="35" width="5" height="10" fill="#333" />
+      <rect x="35" y="35" width="5" height="10" fill="#333" />
+      <rect x="45" y="35" width="5" height="10" fill="#333" />
+      <rect x="55" y="35" width="5" height="10" fill="#333" />
+      
+      <!-- Left wheel -->
+      <circle cx="25" cy="55" r="12" fill="black" stroke="#222" stroke-width="2" />
+      <circle cx="25" cy="55" r="6" fill="#777" stroke="#555" stroke-width="1" />
+      <circle cx="25" cy="55" r="2" fill="#333" />
+      
+      <!-- Right wheel -->
+      <circle cx="70" cy="55" r="12" fill="black" stroke="#222" stroke-width="2" />
+      <circle cx="70" cy="55" r="6" fill="#777" stroke="#555" stroke-width="1" />
+      <circle cx="70" cy="55" r="2" fill="#333" />
+    </svg>
+  `;
+
   return L.divIcon({
-    className: 'custom-div-icon',
-    html: `<div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 2px solid white;"></div>`,
-    iconSize: [25, 25],
-    iconAnchor: [12, 12],
-    popupAnchor: [0, -12]
+    className: 'custom-truck-icon',
+    html: `<div style="background-color: transparent; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center;">${truckSvg}</div>`,
+    iconSize: [50, 50],
+    iconAnchor: [25, 25],
+    popupAnchor: [0, -25]
   });
 };
 
@@ -112,6 +147,14 @@ function App() {
         height: 100vh;
         width: 100%;
         overflow: hidden;
+      }
+      .custom-truck-icon svg {
+        filter: drop-shadow(1px 3px 5px rgba(0,0,0,0.6));
+        transition: all 0.3s ease;
+      }
+      .custom-truck-icon:hover svg {
+        transform: scale(1.3);
+        filter: drop-shadow(2px 5px 8px rgba(0,0,0,0.7));
       }
     `;
     document.head.appendChild(style);
@@ -288,7 +331,7 @@ function App() {
             <Marker 
               key={id}
               position={driver.position}
-              icon={createCustomIcon(activeDriver === id ? '#2563eb' : '#4b5563')}
+              icon={createCustomIcon(activeDriver === id ? '#2563eb' : '#4b5563', driver.heading)}
             >
               <Popup>
                 <div className="text-center">
