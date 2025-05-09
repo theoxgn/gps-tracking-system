@@ -40,20 +40,17 @@ const createCustomIcon = (color) => {
   });
 };
 
-// Component to draw a line between two points
+// Komponen RouteLine untuk menggambar garis rute antara dua titik
 const RouteLine = ({ startPoint, endPoint }) => {
+  // Jika salah satu titik tidak ada, tidak perlu menggambar garis
   if (!startPoint || !endPoint) return null;
-  
-  // Polyline membutuhkan array dari array koordinat untuk positions
-  // Format yang benar: [[lat1, lng1], [lat2, lng2], ...]
-  const positions = [
-    startPoint,
-    endPoint
-  ];
-  
+
+  // Array posisi untuk Polyline: [titik awal, titik akhir]
+  const routePositions = [startPoint, endPoint];
+
   return (
     <Polyline 
-      positions={positions} 
+      positions={routePositions} 
       color="#3b82f6" 
       weight={4} 
       opacity={1} 
