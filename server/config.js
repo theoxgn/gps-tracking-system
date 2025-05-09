@@ -41,7 +41,7 @@ module.exports = {
       
       // Tracking settings
       locationUpdateInterval: process.env.LOCATION_INTERVAL || 1000, // ms
-      retryInterval: 5000, // ms
+      retryInterval: process.env.RETRY_INTERVAL ? parseInt(process.env.RETRY_INTERVAL) : 5000, // ms
       
       // Appearance
       driverMarkerColor: '#3388ff',

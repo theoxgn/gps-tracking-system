@@ -13,7 +13,8 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.4/images/marker-shadow.png',
 });
 
-const SERVER_URL = 'http://localhost:4001';
+// Ganti nilai hardcoded dengan variabel environment
+const SERVER_URL = process.env.REACT_APP_API_URL;
 
 // Custom marker with rotation for direction
 const createCustomIcon = (color) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { io } from 'socket.io-client';
 import { 
@@ -11,9 +11,15 @@ import {
   Activity,
   Clock,
   RefreshCw,
-  ArrowRight
+  ArrowRight,
+  MapPinned,
+  Target,
+  Search,
+  X
 } from 'lucide-react';
 import L from 'leaflet';
+import { getGeocode, getLatLng } from 'use-places-autocomplete';
+import { LoadScript } from '@react-google-maps/api';
 
 // Fix for default marker icons in Leaflet with React
 delete L.Icon.Default.prototype._getIconUrl;
@@ -32,6 +38,28 @@ const createCustomIcon = (color) => {
     iconAnchor: [12, 12],
     popupAnchor: [0, -12]
   });
+};
+
+// Component to draw a line between two points
+const RouteLine = ({ startPoint, endPoint }) => {
+  if (!startPoint || !endPoint) return null;
+  
+  // Polyline membutuhkan array dari array koordinat untuk positions
+  // Format yang benar: [[lat1, lng1], [lat2, lng2], ...]
+  const positions = [
+    startPoint,
+    endPoint
+  ];
+  
+  return (
+    <Polyline 
+      positions={positions} 
+      color="#3b82f6" 
+      weight={4} 
+      opacity={1} 
+      dashArray="10, 10"
+    />
+  );
 };
 
 // Tambahkan CSS inline untuk styling
@@ -261,7 +289,166 @@ const styles = {
   }
 };
 
-const SERVER_URL = 'http://localhost:4001';
+// Ganti nilai hardcoded dengan variabel environment
+const SERVER_URL = process.env.REACT_APP_API_URL;
+const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY; 
+
+// Komponen untuk input alamat dengan autocomplete menggunakan AutocompleteSuggestion yang direkomendasikan Google
+const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) => {
+  // State untuk nilai input, suggestions, dan loading state
+  const [inputValue, setInputValue] = useState(value || '');
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const autocompleteService = useRef(null);
+  
+  // Inisialisasi AutocompleteService saat Google Maps API dimuat
+  useEffect(() => {
+    if (window.google && window.google.maps && window.google.maps.places) {
+      autocompleteService.current = new window.google.maps.places.AutocompleteService();
+    }
+  }, []);
+
+  // Sinkronkan nilai dari props dengan nilai internal
+  useEffect(() => {
+    if (value !== inputValue) {
+      setInputValue(value || '');
+    }
+  }, [value, inputValue]);
+
+  // Style untuk dropdown
+  const dropdownStyle = {
+    position: 'absolute',
+    backgroundColor: '#1f2937',
+    width: '100%',
+    borderRadius: '12px',
+    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
+    zIndex: 1000,
+    marginTop: '4px',
+    maxHeight: '200px',
+    overflowY: 'auto'
+  };
+
+  const suggestionItemStyle = {
+    padding: '10px 12px',
+    cursor: 'pointer',
+    borderBottom: '1px solid #374151',
+    fontSize: '14px',
+    color: '#e5e7eb'
+  };
+
+  const suggestionItemHoverStyle = {
+    backgroundColor: '#374151'
+  };
+
+  // Handler untuk input change
+  const handleInputChange = (e) => {
+    const newValue = e.target.value;
+    setInputValue(newValue);
+    onChange && onChange(e);
+    
+    if (newValue.length > 0) {
+      // Mulai pencarian
+      setShowSuggestions(true);
+      
+      // Gunakan AutocompleteService untuk mendapatkan saran
+      if (autocompleteService.current) {
+        autocompleteService.current.getPlacePredictions({
+          input: newValue,
+          componentRestrictions: { country: 'id' } // Batasi ke Indonesia
+        }, (results, status) => {
+          // Pencarian selesai
+          if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
+            setSuggestions(results);
+          } else {
+            setSuggestions([]);
+          }
+        });
+      }
+    } else {
+      setShowSuggestions(false);
+      setSuggestions([]);
+    }
+  };
+
+  // Handler untuk pemilihan suggestion
+  const handleSelectSuggestion = async (suggestion) => {
+    setInputValue(suggestion.description);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    
+    try {
+      const results = await getGeocode({ address: suggestion.description });
+      const { lat, lng } = await getLatLng(results[0]);
+      onSelect && onSelect({
+        address: suggestion.description,
+        position: [lat, lng]
+      });
+    } catch (error) {
+      console.error('Error selecting location:', error);
+    }
+  };
+
+  // Handler untuk menghapus input
+  const handleClearInput = () => {
+    setInputValue('');
+    onChange && onChange({ target: { value: '' } });
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+        <Search size={16} style={{ position: 'absolute', left: '12px', color: '#9ca3af' }} />
+        <input
+          value={inputValue}
+          onChange={handleInputChange}
+          disabled={!window.google}
+          placeholder={placeholder}
+          style={{
+            ...style,
+            paddingLeft: '36px',
+            paddingRight: inputValue ? '36px' : '12px'
+          }}
+          onFocus={() => inputValue && setShowSuggestions(true)}
+          onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
+        />
+        {inputValue && (
+          <X 
+            size={16} 
+            style={{ position: 'absolute', right: '12px', color: '#9ca3af', cursor: 'pointer' }} 
+            onClick={handleClearInput}
+          />
+        )}
+      </div>
+      
+      {showSuggestions && suggestions.length > 0 && (
+        <ul style={dropdownStyle} className="custom-scrollbar">
+          {suggestions.map((suggestion) => {
+            const { place_id, structured_formatting } = suggestion;
+            const { main_text, secondary_text } = structured_formatting || { main_text: suggestion.description, secondary_text: '' };
+            
+            return (
+              <li
+                key={place_id}
+                style={suggestionItemStyle}
+                onMouseDown={() => handleSelectSuggestion(suggestion)}
+                onMouseOver={(e) => {
+                  Object.assign(e.target.style, suggestionItemHoverStyle);
+                }}
+                onMouseOut={(e) => {
+                  e.target.style.backgroundColor = '';
+                }}
+              >
+                <strong>{main_text}</strong> <small style={{ color: '#9ca3af' }}>{secondary_text}</small>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 // Component to update map view when position changes
 function MapController({ position }) {
@@ -292,6 +479,15 @@ function App() {
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const mapRef = useRef(null);
+  
+  // Route state
+  const [startPoint, setStartPoint] = useState(null);
+  const [endPoint, setEndPoint] = useState(null);
+  const [startAddress, setStartAddress] = useState('');
+  const [endAddress, setEndAddress] = useState('');
+  const [routeDistance, setRouteDistance] = useState(null);
+  const [routeDuration, setRouteDuration] = useState(null);
+  const [isScriptLoaded, setIsScriptLoaded] = useState(false);
 
   // Initialize socket connection
   useEffect(() => {
@@ -400,7 +596,7 @@ function App() {
       { 
         enableHighAccuracy: true, 
         maximumAge: 0,
-        timeout: 5000
+        timeout: process.env.REACT_APP_TIMEOUT ? parseInt(process.env.REACT_APP_TIMEOUT) : 5000
       }
     );
     
@@ -421,11 +617,103 @@ function App() {
     setDriverId(e.target.value);
   };
 
+  // Handle address input changes
+  const handleStartAddressChange = (e) => {
+    setStartAddress(e.target.value);
+  };
+
+  const handleEndAddressChange = (e) => {
+    setEndAddress(e.target.value);
+  };
+  
+  // Handle selection from autocomplete
+  const handleStartLocationSelect = (location) => {
+    setStartAddress(location.address);
+    setStartPoint(location.position);
+    
+    // Calculate route info when both points are set
+    if (endPoint) {
+      calculateRouteInfo(location.position, endPoint);
+    }
+  };
+  
+  const handleEndLocationSelect = (location) => {
+    setEndAddress(location.address);
+    setEndPoint(location.position);
+    
+    // Calculate route info when both points are set
+    if (startPoint) {
+      calculateRouteInfo(startPoint, location.position);
+    }
+  };
+
+  // Set start point to current position
+  const setCurrentAsStart = () => {
+    setStartPoint(position);
+    setStartAddress(`Lokasi Saat Ini (${position[0].toFixed(4)}, ${position[1].toFixed(4)})`);
+    
+    // Calculate route info when both points are set
+    if (endPoint) {
+      calculateRouteInfo(position, endPoint);
+    }
+  };
+
+  // Set end point manually (in real app, would use geocoding API)
+  const setManualEndPoint = () => {
+    // For demo purposes, set a point 0.01 degrees away from current position
+    const newEndPoint = [position[0] + 0.01, position[1] + 0.01];
+    setEndPoint(newEndPoint);
+    setEndAddress(`Tujuan (${newEndPoint[0].toFixed(4)}, ${newEndPoint[1].toFixed(4)})`);
+    
+    // Calculate route info when both points are set
+    if (startPoint) {
+      calculateRouteInfo(startPoint, newEndPoint);
+    }
+  };
+
+  // Clear route
+  const clearRoute = () => {
+    setStartPoint(null);
+    setEndPoint(null);
+    setStartAddress('');
+    setEndAddress('');
+    setRouteDistance(null);
+    setRouteDuration(null);
+  };
+  
+  // Calculate route information (distance and estimated duration)
+  const calculateRouteInfo = (start, end) => {
+    // Calculate distance in kilometers using Haversine formula
+    const R = 6371; // Earth's radius in km
+    const dLat = (end[0] - start[0]) * Math.PI / 180;
+    const dLon = (end[1] - start[1]) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(start[0] * Math.PI / 180) * Math.cos(end[0] * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2); 
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+    const distance = R * c;
+    
+    setRouteDistance(distance);
+    
+    // Estimate duration based on average speed (50 km/h)
+    const avgSpeedKmh = 50;
+    const durationHours = distance / avgSpeedKmh;
+    const durationMinutes = Math.round(durationHours * 60);
+    
+    setRouteDuration(durationMinutes);
+  };
+
   // Button hover states
   const [buttonHover, setButtonHover] = useState(false);
 
   return (
-    <div style={styles.container}>
+    <LoadScript
+      googleMapsApiKey={GOOGLE_MAPS_API_KEY}
+      libraries={['places']}
+      onLoad={() => setIsScriptLoaded(true)}
+    >
+      <div style={styles.container}>
       {/* Sidebar */}
       <div style={styles.sidebar}>
         {/* Header */}
@@ -515,6 +803,25 @@ function App() {
               <div style={styles.statusLabel}>Last Update</div>
               <div>{lastUpdate || 'Never'}</div>
             </div>
+            
+            {/* Route information */}
+            {(startPoint && endPoint) && (
+              <>
+                <div style={{...styles.sectionTitle, marginTop: '12px'}}>
+                  <MapPinned size={16} /> Informasi Rute
+                </div>
+                
+                <div style={styles.card}>
+                  <div style={styles.statusLabel}>Jarak</div>
+                  <div>{routeDistance ? routeDistance.toFixed(2) + ' km' : 'Menghitung...'}</div>
+                </div>
+                
+                <div style={styles.card}>
+                  <div style={styles.statusLabel}>Perkiraan Waktu</div>
+                  <div>{routeDuration ? routeDuration + ' menit' : 'Menghitung...'}</div>
+                </div>
+              </>
+            )}
           </div>
           
           {/* Error message */}
@@ -538,12 +845,85 @@ function App() {
             />
           </div>
           
+          {/* Route inputs */}
+          <div style={{...styles.sectionTitle, marginTop: '12px', marginBottom: '12px', fontSize: '16px'}}>
+            <MapPinned size={16} /> Rute Perjalanan
+          </div>
+          
+          <div style={styles.inputGroup}>
+            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+              {isScriptLoaded ? (
+                <PlacesAutocomplete
+                  placeholder="Lokasi Awal"
+                  value={startAddress}
+                  onChange={handleStartAddressChange}
+                  onSelect={handleStartLocationSelect}
+                  style={{...styles.input, marginBottom: '0', flex: 1}}
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={startAddress}
+                  onChange={handleStartAddressChange}
+                  style={{...styles.input, marginBottom: '0', flex: 1}}
+                  placeholder="Lokasi Awal (memuat...)"
+                  disabled
+                />
+              )}
+              <button 
+                onClick={setCurrentAsStart}
+                style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
+                title="Gunakan lokasi saat ini"
+              >
+                <MapPin size={16} />
+              </button>
+            </div>
+            
+            <div style={{display: 'flex', alignItems: 'center', marginBottom: '8px'}}>
+              {isScriptLoaded ? (
+                <PlacesAutocomplete
+                  placeholder="Tujuan"
+                  value={endAddress}
+                  onChange={handleEndAddressChange}
+                  onSelect={handleEndLocationSelect}
+                  style={{...styles.input, marginBottom: '0', flex: 1}}
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={endAddress}
+                  onChange={handleEndAddressChange}
+                  style={{...styles.input, marginBottom: '0', flex: 1}}
+                  placeholder="Tujuan (memuat...)"
+                  disabled
+                />
+              )}
+              <button 
+                onClick={setManualEndPoint}
+                style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
+                title="Pilih titik di peta"
+              >
+                <Target size={16} />
+              </button>
+            </div>
+            
+            {(startPoint && endPoint) && (
+              <button 
+                onClick={clearRoute}
+                style={{...styles.button, backgroundColor: '#6b7280', marginTop: '8px', padding: '8px'}}
+              >
+                <span>Hapus Rute</span>
+              </button>
+            )}
+          </div>
+          
           <button 
             onClick={watchId === null ? startTracking : stopTracking} 
             style={{
               ...styles.button,
               ...(watchId === null ? {} : styles.buttonRed),
-              ...(buttonHover ? (watchId === null ? styles.buttonHover : styles.buttonRedHover) : {})
+              ...(buttonHover ? (watchId === null ? styles.buttonHover : styles.buttonRedHover) : {}),
+              marginTop: '12px'
             }}
             onMouseEnter={() => setButtonHover(true)}
             onMouseLeave={() => setButtonHover(false)}
@@ -574,6 +954,7 @@ function App() {
             attribution='&amp;copy <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          {/* Current position marker */}
           <Marker 
             position={position}
             icon={createCustomIcon('#2563eb')}
@@ -587,10 +968,47 @@ function App() {
               </div>
             </Popup>
           </Marker>
+          
+          {/* Start point marker */}
+          {startPoint && (
+            <Marker 
+              position={startPoint}
+              icon={createCustomIcon('#10b981')} // Green color
+            >
+              <Popup>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontWeight: 'bold', color: '#10b981' }}>Lokasi Awal</div>
+                  <div style={{ fontSize: '14px' }}>{startPoint[0].toFixed(6)}, {startPoint[1].toFixed(6)}</div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+          
+          {/* End point marker */}
+          {endPoint && (
+            <Marker 
+              position={endPoint}
+              icon={createCustomIcon('#ef4444')} // Red color
+            >
+              <Popup>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontWeight: 'bold', color: '#ef4444' }}>Tujuan</div>
+                  <div style={{ fontSize: '14px' }}>{endPoint[0].toFixed(6)}, {endPoint[1].toFixed(6)}</div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+          
+          {/* Route line */}
+          {startPoint && endPoint && (
+            <RouteLine startPoint={startPoint} endPoint={endPoint} />
+          )}
+          
           <MapController position={position} />
         </MapContainer>
       </div>
     </div>
+    </LoadScript>
   );
 }
 
