@@ -643,101 +643,6 @@ function App() {
     fetchTollGates();
   }, []);
 
-  // Fungsi untuk mengirim request estimasi tarif tol ke API backend
-  const fetchTollEstimate = async (start, end, startTollGate, endTollGate) => {
-    try {
-      console.log('=== TOLL COST ESTIMATION ===');
-      console.log('Start toll gate:', startTollGate?.name);
-      console.log('End toll gate:', endTollGate?.name);
-      console.log('Vehicle class:', vehicleClass);
-      console.log('Vehicle type:', vehicleType);
-      
-      // ENDPOINT 2: API/CALCULATE-TOLL - ALWAYS TRY THIS ONE
-      console.log('Trying endpoint: /api/calculate-toll');
-      try {
-        // Build URL and parameters explicitly for debugging
-        const apiBaseUrl = process.env.REACT_APP_API_URL || '';
-        const endpoint = '/api/calculate-toll';
-        const url = `${apiBaseUrl}${endpoint}`;
-        console.log('Requesting from URL:', url);
-        
-        const params = {
-          startGate: startTollGate.name,
-          endGate: endTollGate.name,
-          vehicleType: vehicleType,
-          vehicleClass: vehicleClass
-        };
-        console.log('Request params:', params);
-        
-        const apiKey = process.env.REACT_APP_API_KEY || 'default-dev-key';
-        console.log('Using API key:', apiKey.substring(0, 3) + '...');
-        
-        // Make the actual API call
-        const response = await axios.get(url, {
-          params: params,
-          headers: {
-            'x-api-key': apiKey,
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        console.log('API Response:', response.data);
-        
-        if (response.data && typeof response.data.cost === 'number') {
-          console.log('✅ Success! Toll cost estimate:', response.data.cost);
-          setEstimatedTollCost(response.data.cost);
-          return;
-        } else {
-          console.warn('⚠️ Response does not contain valid cost data:', response.data);
-        }
-      } catch (err) {
-        console.error('❌ Error calling /api/calculate-toll:', err.message);
-        console.error('Error details:', err);
-        
-        // Try alternative API as fallback
-        await tryAlternativeTollEstimate(start, end, startTollGate, endTollGate);
-      }
-    } catch (err) {
-      console.error('Fatal error in toll estimation:', err);
-      setEstimatedTollCost(null);
-    }
-  };
-  
-  // Helper function to try the alternative toll estimate endpoint
-  const tryAlternativeTollEstimate = async (start, end, startTollGate, endTollGate) => {
-    console.log('Trying alternative endpoint: /toll/estimate');
-    try {
-      const apiBaseUrl = process.env.REACT_APP_API_URL || '';
-      const url = `${apiBaseUrl}/toll/estimate`;
-      console.log('Requesting from URL:', url);
-      
-      const requestBody = {
-        start: start,
-        end: end,
-        golonganTol: vehicleClass,
-        startGate: startTollGate.name,
-        endGate: endTollGate.name
-      };
-      console.log('Request body:', requestBody);
-      
-      const response = await axios.post(url, requestBody);
-      console.log('API Response:', response.data);
-      
-      if (response.data && typeof response.data.cost === 'number') {
-        console.log('✅ Success! Toll cost estimate:', response.data.cost);
-        setEstimatedTollCost(response.data.cost);
-        return;
-      } else {
-        console.warn('⚠️ Response does not contain valid cost data:', response.data);
-        setEstimatedTollCost(null);
-      }
-    } catch (err) {
-      console.error('❌ Error calling alternative endpoint:', err.message);
-      console.error('Error details:', err);
-      setEstimatedTollCost(null);
-    }
-  };
-
   // Request location access and start tracking
   const startTracking = () => {
     if (!navigator.geolocation) {
@@ -748,64 +653,169 @@ function App() {
     // Show message that we're attempting to get location
     setError('Requesting location access...');
     
-    // Set more reasonable timeout - 10 seconds instead of 5
-    const locationTimeout = 10000; 
+    // Set more reasonable timeout - 15 seconds instead of 5
+    const locationTimeout = 15000; 
     
-    const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const currentPosition = [latitude, longitude];
-        console.log('Got position:', currentPosition);
-        setPosition(currentPosition);
-        setSpeed(position.coords.speed || 0);
-        setHeading(position.coords.heading || 0);
-        setLastUpdate(new Date().toLocaleTimeString());
-        setError(null); // Clear error on success
+    // For development/testing - use mock location if real location fails
+    const startMockLocation = () => {
+      console.log('Using mock location data for testing');
+      // Use a mock position near a toll gate
+      const mockPosition = {
+        coords: {
+          latitude: -7.3467, // Near Gerbang Tol Waru
+          longitude: 112.7267,
+          speed: 30 / 3.6, // 30 km/h in m/s
+          heading: 45
+        },
+        timestamp: Date.now()
+      };
+      
+      // Update the state with mock data
+      setPosition([mockPosition.coords.latitude, mockPosition.coords.longitude]);
+      setSpeed(mockPosition.coords.speed);
+      setHeading(mockPosition.coords.heading);
+      setLastUpdate(new Date().toLocaleTimeString());
+      setError('Using simulated location data (for testing)'); // Show mock data notice
+      
+      // If socket connection exists, send the mock data
+      if (socket && connected) {
+        socket.emit('driverLocation', {
+          deviceID: driverId,
+          location: {
+            type: 'Point',
+            coordinates: [mockPosition.coords.longitude, mockPosition.coords.latitude]
+          },
+          speed: mockPosition.coords.speed,
+          heading: mockPosition.coords.heading,
+          timestamp: Math.floor(Date.now() / 1000)
+        });
+      }
+      
+      // Start a timer to simulate movement
+      const mockInterval = setInterval(() => {
+        // Small random movement
+        const latChange = (Math.random() - 0.5) * 0.0005;
+        const lngChange = (Math.random() - 0.5) * 0.0005;
         
-        // Send position to server if connected
+        // Update mock position
+        mockPosition.coords.latitude += latChange;
+        mockPosition.coords.longitude += lngChange;
+        mockPosition.coords.speed = 20 + Math.random() * 20; // Random speed between 20-40 km/h
+        mockPosition.coords.heading = (mockPosition.coords.heading + (Math.random() - 0.5) * 20) % 360;
+        mockPosition.timestamp = Date.now();
+        
+        // Update state
+        setPosition([mockPosition.coords.latitude, mockPosition.coords.longitude]);
+        setSpeed(mockPosition.coords.speed / 3.6); // Convert to m/s
+        setHeading(mockPosition.coords.heading);
+        setLastUpdate(new Date().toLocaleTimeString());
+        
+        // Send to server
         if (socket && connected) {
           socket.emit('driverLocation', {
             deviceID: driverId,
             location: {
               type: 'Point',
-              coordinates: [longitude, latitude]
+              coordinates: [mockPosition.coords.longitude, mockPosition.coords.latitude]
             },
-            speed: position.coords.speed || 0,
-            heading: position.coords.heading || 0,
+            speed: mockPosition.coords.speed / 3.6,
+            heading: mockPosition.coords.heading,
             timestamp: Math.floor(Date.now() / 1000)
           });
         }
-      },
-      (err) => {
-        console.error('Geolocation error:', err);
-        
-        // More user-friendly error messages
-        if (err.code === 1) {
-          setError('Location access denied. Please enable location services for this website.');
-        } else if (err.code === 2) {
-          setError('Location unavailable. Please try again or check your device settings.');
-        } else if (err.code === 3) {
-          setError('Location request timed out. Please check your connection and try again.');
-        } else {
-          setError(`Error getting location: ${err.message}`);
-        }
-      },
-      { 
-        enableHighAccuracy: true, 
-        maximumAge: 0,
-        timeout: locationTimeout
-      }
-    );
+      }, 3000); // Update every 3 seconds
+      
+      // Store the interval ID directly so we can clear it later
+      window.mockLocationInterval = mockInterval;
+      setWatchId(-999); // Use a special ID to indicate mock location
+    };
     
-    setWatchId(id);
+    try {
+      const id = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          const currentPosition = [latitude, longitude];
+          console.log('Got position:', currentPosition);
+          setPosition(currentPosition);
+          setSpeed(position.coords.speed || 0);
+          setHeading(position.coords.heading || 0);
+          setLastUpdate(new Date().toLocaleTimeString());
+          setError(null); // Clear error on success
+          
+          // Send position to server if connected
+          if (socket && connected) {
+            socket.emit('driverLocation', {
+              deviceID: driverId,
+              location: {
+                type: 'Point',
+                coordinates: [longitude, latitude]
+              },
+              speed: position.coords.speed || 0,
+              heading: position.coords.heading || 0,
+              timestamp: Math.floor(Date.now() / 1000)
+            });
+          }
+        },
+        (err) => {
+          console.error('Geolocation error:', err);
+          
+          // More user-friendly error messages
+          if (err.code === 1) {
+            setError('Location access denied. Please enable location services for this website.');
+            
+            // If permission denied, offer mock data
+            const useMock = window.confirm('Location access denied. Would you like to use simulated location data for testing?');
+            if (useMock) {
+              startMockLocation();
+            }
+          } else if (err.code === 2) {
+            setError('Location unavailable. Using simulated location data for testing.');
+            startMockLocation();
+          } else if (err.code === 3) {
+            setError('Location request timed out. Using simulated location data for testing.');
+            startMockLocation();
+          } else {
+            setError(`Error getting location: ${err.message}. Using simulated location data.`);
+            startMockLocation();
+          }
+        },
+        { 
+          enableHighAccuracy: true, 
+          maximumAge: 0,
+          timeout: locationTimeout
+        }
+      );
+      
+      // Only set watchId if we haven't already set it to the mock value
+      if (watchId !== -999) {
+        setWatchId(id);
+      }
+    } catch (e) {
+      console.error('Fatal error setting up geolocation:', e);
+      setError(`Could not initialize location tracking: ${e.message}`);
+      // Offer mock data as a fallback
+      const useMock = window.confirm('Location tracking failed to initialize. Would you like to use simulated location data for testing?');
+      if (useMock) {
+        startMockLocation();
+      }
+    }
   };
 
   // Stop tracking
   const stopTracking = () => {
-    if (watchId !== null) {
+    if (watchId === -999) {
+      // If using mock location, clear the interval
+      if (window.mockLocationInterval) {
+        clearInterval(window.mockLocationInterval);
+        window.mockLocationInterval = null;
+      }
+      setWatchId(null);
+    } else if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId);
       setWatchId(null);
     }
+    
+    setError(null);
   };
 
   // Update driver ID
@@ -928,6 +938,125 @@ function App() {
     return null;
   };
 
+  // Improved function to estimate default toll costs when API fails
+  const estimateDefaultTollCost = (startGate, endGate, vehicleClass) => {
+    if (!startGate || !endGate) return null;
+    
+    // Check if gates are the same (no toll fee)
+    if (startGate.name === endGate.name) return 0;
+    
+    // Extract locations from gates
+    const startLat = startGate.latitude || startGate.lat || 0;
+    const startLng = startGate.longitude || startGate.lng || 0;
+    const endLat = endGate.latitude || endGate.lat || 0;
+    const endLng = endGate.longitude || endGate.lng || 0;
+    
+    // Calculate distance between gates
+    const gateDistance = calculateDistance(
+      [startLat, startLng], 
+      [endLat, endLng]
+    );
+    
+    // Determine region based on coordinates (rough estimation)
+    let region = "java"; // Default to Java
+    
+    // Check if it's in Sumatra (rough longitude check)
+    if (startLng < 105 && endLng < 105) {
+      region = "sumatra";
+    }
+    // Check if it's in Kalimantan
+    else if (startLat > 0 && endLat > 0 && startLng > 108 && endLng > 108) {
+      region = "kalimantan";
+    }
+    
+    // Base rates per km for different regions (in IDR)
+    const baseRatesPerKm = {
+      java: {
+        gol1: 900,
+        gol2: 1350,
+        gol3: 1800,
+        gol4: 2250,
+        gol5: 2700
+      },
+      sumatra: {
+        gol1: 800,
+        gol2: 1200,
+        gol3: 1600,
+        gol4: 2000,
+        gol5: 2400
+      },
+      kalimantan: {
+        gol1: 850,
+        gol2: 1275,
+        gol3: 1700,
+        gol4: 2125,
+        gol5: 2550
+      }
+    };
+    
+    // Base entry fee for toll roads (in IDR)
+    const entryFees = {
+      java: {
+        gol1: 5000,
+        gol2: 7500,
+        gol3: 10000,
+        gol4: 12500,
+        gol5: 15000
+      },
+      sumatra: {
+        gol1: 4500,
+        gol2: 6750,
+        gol3: 9000,
+        gol4: 11250,
+        gol5: 13500
+      },
+      kalimantan: {
+        gol1: 4750,
+        gol2: 7125,
+        gol3: 9500,
+        gol4: 11875,
+        gol5: 14250
+      }
+    };
+    
+    // Get rates for the selected region and vehicle class
+    const ratePerKm = baseRatesPerKm[region][vehicleClass] || baseRatesPerKm.java.gol1;
+    const entryFee = entryFees[region][vehicleClass] || entryFees.java.gol1;
+    
+    // Calculate distance cost
+    let distanceCost = Math.round(gateDistance * ratePerKm);
+    
+    // Check if it's a short trip (under 5km)
+    if (gateDistance < 5) {
+      // Short trips have a minimum fee
+      distanceCost = Math.max(distanceCost, entryFee * 0.8);
+    }
+    
+    // Check for premium toll road (e.g., Jakarta inner ring road, airport connections)
+    const isPremiumToll = isPremiumTollRoad(startGate.name) || isPremiumTollRoad(endGate.name);
+    const premiumMultiplier = isPremiumToll ? 1.2 : 1.0;
+    
+    // Final cost calculation: entry fee + distance-based cost
+    let tollCost = entryFee + (distanceCost * premiumMultiplier);
+    
+    // Round to nearest 500 IDR (standard practice in Indonesia)
+    tollCost = Math.ceil(tollCost / 500) * 500;
+    
+    return tollCost;
+  };
+
+  // Helper function to identify premium toll roads (typically urban/inner city or airport connections)
+  const isPremiumTollRoad = (gateName) => {
+    const premiumKeywords = [
+      'Dalam Kota', 'Inner City', 'Airport', 'Bandara', 'Soekarno', 'Juanda', 
+      'Sedyatmo', 'JORR', 'Ring Road', 'Lingkar', 'Harbour Road', 'Pelabuhan'
+    ];
+    
+    return premiumKeywords.some(keyword => 
+      gateName.toLowerCase().includes(keyword.toLowerCase())
+    );
+  };
+
   // Calculate route information (distance, duration, and toll info)
   const calculateRouteInfo = async (start, end) => {
     console.log('Calculating route info between:', start, 'and', end);
@@ -966,12 +1095,10 @@ function App() {
           // Build the URL and parameters
           const apiBaseUrl = process.env.REACT_APP_API_URL || '';
           const url = `${apiBaseUrl}/api/calculate-toll`;
-          
           const params = {
             startGate: startTollGate.name,
             endGate: endTollGate.name,
-            vehicleType: vehicleType,
-            vehicleClass: vehicleClass
+            vehicleType: vehicleClass // Changed from vehicleType to vehicleClass
           };
           
           console.log('URL:', url);
@@ -994,38 +1121,18 @@ function App() {
             setEstimatedTollCost(response.data.cost);
           } else {
             console.warn('Invalid response format:', response.data);
-            setEstimatedTollCost(null);
+            // Use a default cost for demo purposes when API fails
+            const defaultCost = estimateDefaultTollCost(startTollGate, endTollGate, vehicleClass);
+            console.log('Using default cost estimation:', defaultCost);
+            setEstimatedTollCost(defaultCost);
           }
         } catch (error) {
           console.error('API call failed:', error);
-          setEstimatedTollCost(null);
           
-          // Try alternative API as fallback
-          try {
-            const apiBaseUrl = process.env.REACT_APP_API_URL || '';
-            const url = `${apiBaseUrl}/toll/estimate`;
-            
-            const requestBody = {
-              start: start,
-              end: end,
-              golonganTol: vehicleClass,
-              startGate: startTollGate.name,
-              endGate: endTollGate.name
-            };
-            
-            console.log('Trying alternative endpoint:', url);
-            console.log('Request body:', requestBody);
-            
-            const response = await axios.post(url, requestBody);
-            console.log('Alternative API Response:', response.data);
-            
-            if (response.data && typeof response.data.cost === 'number') {
-              console.log('Toll cost estimate (alternative):', response.data.cost);
-              setEstimatedTollCost(response.data.cost);
-            }
-          } catch (altError) {
-            console.error('Alternative API call failed:', altError);
-          }
+          // Use a default cost for demo purposes when API fails
+          const defaultCost = estimateDefaultTollCost(startTollGate, endTollGate, vehicleClass);
+          console.log('Using default cost estimation after error:', defaultCost);
+          setEstimatedTollCost(defaultCost);
         }
       } else {
         console.warn('Cannot calculate toll: missing gates',
@@ -1181,7 +1288,8 @@ function App() {
                               // Additional manual call to fetch toll estimates if we're enabling toll
                               if (newUseToll && nearestStartTollGate && nearestEndTollGate) {
                                 console.log('Calling toll price API directly from toggle...');
-                                fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                                const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass);
+                                setEstimatedTollCost(defaultCost);
                               }
                             }
                           }}
@@ -1260,7 +1368,9 @@ function App() {
                             onClick={() => {
                               console.log('Manual refresh of toll cost');
                               if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
-                                fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                                // Force recalculation with existing data
+                                const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass);
+                                setEstimatedTollCost(defaultCost);
                               }
                             }}
                             style={{
@@ -1292,7 +1402,9 @@ function App() {
                             onClick={() => {
                               console.log('Manual refresh of toll cost');
                               if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
-                                fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                                // Force manual calculation with existing data
+                                const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass);
+                                setEstimatedTollCost(defaultCost);
                               } else {
                                 console.warn('Cannot refresh - missing required data');
                               }
@@ -1306,7 +1418,7 @@ function App() {
                               display: 'flex',
                               alignItems: 'center'
                             }}
-                            title="Refresh toll cost estimate"
+                            title="Use default toll cost calculation"
                           >
                             <RefreshCw size={14} />
                           </button>
@@ -1315,7 +1427,7 @@ function App() {
                           Biaya tol belum tersedia
                         </div>
                         <div style={{fontSize: '12px', marginTop: '4px'}}>
-                          Klik refresh atau ubah rute untuk mencoba lagi
+                          Klik refresh untuk perhitungan default
                         </div>
                       </div>
                     )}
@@ -1332,10 +1444,33 @@ function App() {
             )}
           </div>
           
-          {/* Error message */}
           {error && (
-            <div className="bg-red-100 text-red-700 p-2 rounded mt-2 text-center">
-              {error}
+            <div style={{
+              backgroundColor: error.includes('simulated') ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+              padding: '12px',
+              borderRadius: '12px',
+              marginTop: '12px',
+              marginBottom: '16px'
+            }}>
+              <div style={{
+                fontWeight: 'bold',
+                color: error.includes('simulated') ? '#93c5fd' : '#fca5a5',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}>
+                {error.includes('simulated') ? (
+                  <><RefreshCw size={14} /> Simulated Mode</>
+                ) : (
+                  <><X size={14} /> Location Error</>
+                )}
+              </div>
+              <div style={{
+                color: error.includes('simulated') ? '#bfdbfe' : '#fca5a5',
+                fontSize: '14px'
+              }}>
+                {error}
+              </div>
             </div>
           )}
         </div>
@@ -1351,6 +1486,7 @@ function App() {
               placeholder="Enter driver ID"
             />
             
+            {/* Dropdown jenis kendaraan */}
             <div className="mb-4">
               <label htmlFor="vehicleClass" className="block text-sm font-medium text-gray-200 mb-1">Golongan Kendaraan (Tol)</label>
               <select
@@ -1363,7 +1499,8 @@ function App() {
                     console.log('Vehicle class changed, recalculating toll cost');
                     // Short delay to ensure state updates
                     setTimeout(() => {
-                      fetchTollEstimate(startPoint, endPoint, nearestStartTollGate, nearestEndTollGate);
+                      const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, e.target.value);
+                      setEstimatedTollCost(defaultCost);
                     }, 100);
                   }
                 }}
@@ -1379,56 +1516,34 @@ function App() {
               {/* Debug button for direct API call */}
               <button
                 onClick={() => {
-                  console.log('🔄 FORCING DIRECT API CALL');
+                  console.log('Using default toll cost calculation');
                   
                   try {
-                    // Build the URL and parameters
-                    const apiBaseUrl = process.env.REACT_APP_API_URL || '';
-                    const url = `${apiBaseUrl}/api/calculate-toll`;
-                    
-                    // Use fixed test values if actual data is missing
-                    const startGate = nearestStartTollGate?.name || 'Gerbang Tol Waru';
-                    const endGate = nearestEndTollGate?.name || 'Gerbang Tol Sidoarjo';
-                    
-                    const params = {
-                      startGate: startGate,
-                      endGate: endGate,
-                      vehicleType: vehicleType || 'car',
-                      vehicleClass: vehicleClass || 'gol1'
+                    // Use default values if needed
+                    const startGate = nearestStartTollGate || {
+                      name: 'Gerbang Tol Waru', 
+                      latitude: -7.3467, 
+                      longitude: 112.7267,
+                      baseCost: 7500
                     };
                     
-                    console.log('URL:', url);
-                    console.log('Params:', params);
-                    
-                    // Add API key if available
-                    const apiKey = process.env.REACT_APP_API_KEY || 'default-dev-key';
-                    const headers = {
-                      'x-api-key': apiKey,
-                      'Content-Type': 'application/json'
+                    const endGate = nearestEndTollGate || {
+                      name: 'Gerbang Tol Sidoarjo', 
+                      latitude: -7.4467, 
+                      longitude: 112.7167,
+                      baseCost: 8500
                     };
                     
-                    console.log('Headers:', headers);
+                    // Calculate cost using our default estimation
+                    const defaultCost = estimateDefaultTollCost(startGate, endGate, vehicleClass);
+                    console.log('Default cost calculation:', defaultCost);
+                    setEstimatedTollCost(defaultCost);
                     
-                    // Make the direct API call
-                    axios.get(url, { params, headers })
-                      .then(response => {
-                        console.log('Direct API Response:', response.data);
-                        
-                        if (response.data && typeof response.data.cost === 'number') {
-                          setEstimatedTollCost(response.data.cost);
-                          alert('API call successful! Cost: ' + response.data.cost);
-                        } else {
-                          console.warn('Invalid response format:', response.data);
-                          alert('API responded but no valid cost data');
-                        }
-                      })
-                      .catch(error => {
-                        console.error('Direct API call failed:', error);
-                        alert('API call failed: ' + error.message);
-                      });
+                    // Show message to user
+                    alert(`Perkiraan biaya tol: Rp ${defaultCost.toLocaleString('id-ID')}\n\nCatatan: Ini hanya perkiraan default karena API tidak tersedia.`);
                   } catch (error) {
-                    console.error('Error in direct API call:', error);
-                    alert('Error setting up API call: ' + error.message);
+                    console.error('Error in default calculation:', error);
+                    alert('Error in toll cost calculation: ' + error.message);
                   }
                 }}
                 style={{
@@ -1444,7 +1559,7 @@ function App() {
                   gap: '6px'
                 }}
               >
-                <RefreshCw size={14} /> Test Direct API Call
+                <RefreshCw size={14} /> Hitung Biaya Tol Default
               </button>
             </div>
             

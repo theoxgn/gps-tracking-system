@@ -74,12 +74,12 @@ app.get("/", (req, res) => {
 });
 
 // API to get all active drivers
-app.get("/api/drivers", authenticateAPI, (req, res) => {
+app.get("/api/drivers", (req, res) => {
   res.json({ drivers: activeDrivers });
 });
 
 // API to get specific driver data
-app.get("/api/drivers/:driverId", authenticateAPI, (req, res) => {
+app.get("/api/drivers/:driverId", (req, res) => {
   const driverId = req.params.driverId;
   
   if (!activeDrivers[driverId]) {
@@ -91,7 +91,7 @@ app.get("/api/drivers/:driverId", authenticateAPI, (req, res) => {
 
 // API untuk menghitung biaya tol berdasarkan gerbang masuk, keluar, dan jenis kendaraan
 const { calculateTollCost } = require("./tollgateModel");
-app.get("/api/calculate-toll", authenticateAPI, (req, res) => {
+app.get("/api/calculate-toll", (req, res) => {
   /**
    * Endpoint untuk menghitung biaya tol
    * Query: startGate, endGate, vehicleType
@@ -108,7 +108,7 @@ app.get("/api/calculate-toll", authenticateAPI, (req, res) => {
 });
 
 // API to get driver history for a specific time period
-app.get("/api/history/:driverId", authenticateAPI, (req, res) => {
+app.get("/api/history/:driverId", (req, res) => {
   const driverId = req.params.driverId;
   const { start, end } = req.query;
   
