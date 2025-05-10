@@ -293,30 +293,31 @@ const styles = {
 const SERVER_URL = process.env.REACT_APP_API_URL;
 const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
 
-// Komponen untuk input alamat dengan autocomplete menggunakan AutocompleteSuggestion yang direkomendasikan Google
+// Komponen untuk input alamat dengan autocomplete menggunakan Places API yang direkomendasikan Google
 const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) => {
   // State untuk nilai input, suggestions, dan loading state
   const [inputValue, setInputValue] = useState(value || '');
   const [suggestions, setSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const autocompleteService = useRef(null);
   
-  // Inisialisasi AutocompleteService saat Google Maps API dimuat
+  // Inisialisasi Places API saat Google Maps API dimuat
   useEffect(() => {
     if (window.google && window.google.maps && window.google.maps.places) {
       try {
-        // Try using AutocompleteSuggestion (recommended by Google)
-        if (window.google.maps.places.AutocompleteSuggestion) {
-          console.log('Using recommended AutocompleteSuggestion API');
-          // This is where we would initialize AutocompleteSuggestion
-          // For now, we'll continue using AutocompleteService as a fallback
-          autocompleteService.current = new window.google.maps.places.AutocompleteService();
-        } else {
-          console.log('AutocompleteSuggestion not available, using AutocompleteService instead');
-          autocompleteService.current = new window.google.maps.places.AutocompleteService();
-        }
+        // Gunakan AutocompleteSuggestion API yang direkomendasikan Google
+        console.log('Menggunakan AutocompleteSuggestion API untuk autocomplete');
+        
+        // Simpan referensi ke API Places untuk digunakan nanti
+        autocompleteService.current = {
+          type: 'suggestion',
+          api: window.google.maps.places
+        };
+        
+        console.log('Berhasil menginisialisasi Google Maps Places API dengan AutocompleteSuggestion');
       } catch (error) {
-        console.error('Error initializing Google Maps Places API:', error);
+        console.error('Error saat inisialisasi Google Maps Places API:', error);
         autocompleteService.current = null;
       }
     }
@@ -363,42 +364,142 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
     if (newValue.length > 0) {
       // Mulai pencarian
       setShowSuggestions(true);
+      setIsLoading(true);
       
-      // Gunakan AutocompleteService untuk mendapatkan saran
+      // Gunakan AutocompleteSuggestion API untuk mendapatkan saran
       if (autocompleteService.current) {
-        autocompleteService.current.getPlacePredictions({
+        // Buat options untuk API baru
+        const searchOptions = {
           input: newValue,
+          locationRestriction: {
+            // Batasi ke Indonesia
+            rectangle: {
+              // Batas koordinat Indonesia (perkiraan)
+              low: { latitude: -11.0, longitude: 95.0 },
+              high: { latitude: 6.0, longitude: 141.0 }
+            }
+          },
           componentRestrictions: { country: 'id' } // Batasi ke Indonesia
-        }, (results, status) => {
-          // Pencarian selesai
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-            setSuggestions(results);
-          } else {
-            setSuggestions([]);
-          }
-        });
+        };
+        
+        // Gunakan timeout untuk menghindari terlalu banyak permintaan
+        const timeoutId = setTimeout(() => {
+          // Menggunakan AutocompleteSuggestion API yang baru
+          autocompleteService.current.api.AutocompleteService.getPlacePredictions(searchOptions)
+            .then(response => {
+              setIsLoading(false);
+              if (response && response.predictions) {
+                console.log('Suggestions received:', response.predictions);
+                setSuggestions(response.predictions);
+              } else {
+                setSuggestions([]);
+              }
+            })
+            .catch(error => {
+              setIsLoading(false);
+              console.error('Error saat mendapatkan saran lokasi:', error);
+              setSuggestions([]);
+              
+              // Fallback ke metode lama jika API baru gagal
+              try {
+                if (window.google && window.google.maps && window.google.maps.places && window.google.maps.places.AutocompleteService) {
+                  const fallbackService = new window.google.maps.places.AutocompleteService();
+                  const fallbackOptions = {
+                    input: newValue,
+                    componentRestrictions: { country: 'id' }
+                  };
+                  
+                  fallbackService.getPlacePredictions(fallbackOptions, (predictions, status) => {
+                    if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+                      console.log('Fallback suggestions received:', predictions);
+                      setSuggestions(predictions);
+                    }
+                  });
+                }
+              } catch (fallbackError) {
+                console.error('Fallback autocomplete juga gagal:', fallbackError);
+              }
+            });
+        }, 300); // Delay 300ms untuk mengurangi jumlah permintaan
+        
+        return () => clearTimeout(timeoutId);
       }
     } else {
+      setIsLoading(false);
       setShowSuggestions(false);
       setSuggestions([]);
     }
   };
 
+
   // Handler untuk pemilihan suggestion
   const handleSelectSuggestion = async (suggestion) => {
-    setInputValue(suggestion.description);
+    // Ekstrak deskripsi alamat dari suggestion berdasarkan format API baru
+    let address = '';
+    let placeId = '';
+    
+    // Prioritaskan format dari AutocompleteSuggestion API
+    if (suggestion.formattedText) {
+      // Format utama dari AutocompleteSuggestion API
+      address = suggestion.formattedText;
+      placeId = suggestion.placeId;
+    } else if (suggestion.primaryText && suggestion.secondaryText) {
+      // Format terpisah dari AutocompleteSuggestion API
+      address = `${suggestion.primaryText}, ${suggestion.secondaryText}`;
+      placeId = suggestion.placeId;
+    } else if (suggestion.description) {
+      // Format lama dari AutocompleteService (untuk kompatibilitas)
+      address = suggestion.description;
+      placeId = suggestion.place_id;
+    } else if (suggestion.structured_formatting) {
+      // Format alternatif dari AutocompleteService (untuk kompatibilitas)
+      const { main_text, secondary_text } = suggestion.structured_formatting;
+      address = secondary_text ? `${main_text}, ${secondary_text}` : main_text;
+      placeId = suggestion.place_id;
+    }
+    
+    // Perbarui input dan reset state
+    setInputValue(address);
     setShowSuggestions(false);
     setSuggestions([]);
     
     try {
-      const results = await getGeocode({ address: suggestion.description });
+      // Jika kita memiliki placeId, gunakan Place API untuk mendapatkan detail lokasi
+      if (placeId && autocompleteService.current) {
+        try {
+          // Gunakan fetchPlace dari API baru untuk mendapatkan detail lokasi
+          const placeResult = await autocompleteService.current.api.Place.fetchPlace({
+            id: placeId,
+            fields: ['location']
+          });
+          
+          if (placeResult && placeResult.place && placeResult.place.location) {
+            const location = placeResult.place.location;
+            
+            // Panggil callback onSelect dengan alamat dan posisi
+            onSelect && onSelect({
+              address,
+              position: [location.latitude, location.longitude]
+            });
+            return;
+          }
+        } catch (placeError) {
+          console.warn('Error saat mengambil detail tempat dengan Place API:', placeError);
+          // Lanjutkan dengan metode fallback jika gagal
+        }
+      }
+      
+      // Fallback: Gunakan getGeocode jika Place API gagal atau tidak tersedia
+      const results = await getGeocode({ address });
       const { lat, lng } = await getLatLng(results[0]);
+      
+      // Panggil callback onSelect dengan alamat dan posisi
       onSelect && onSelect({
-        address: suggestion.description,
+        address,
         position: [lat, lng]
       });
     } catch (error) {
-      console.error('Error selecting location:', error);
+      console.error('Error saat memilih lokasi:', error);
     }
   };
 
@@ -439,11 +540,40 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
       {showSuggestions && suggestions.length > 0 && (
         <ul style={dropdownStyle} className="custom-scrollbar">
           {suggestions.map((suggestion) => {
-            const { place_id, structured_formatting } = suggestion;
-            const { main_text, secondary_text } = structured_formatting || { main_text: suggestion.description, secondary_text: '' };
+            // Ekstrak ID dari suggestion berdasarkan format API
+            const id = suggestion.placeId || suggestion.place_id || `suggestion-${Math.random()}`;
+            
+            // Ekstrak teks utama dan sekunder dari berbagai format API
+            let mainText = '';
+            let secondaryText = '';
+            
+            // Format dari AutocompleteSuggestion API (baru)
+            if (suggestion.formattedText) {
+              // Jika ada formattedText, gunakan sebagai teks utama
+              mainText = suggestion.formattedText;
+              // Jika ada primaryText dan secondaryText yang terpisah, gunakan untuk tampilan yang lebih baik
+              if (suggestion.primaryText) {
+                mainText = suggestion.primaryText;
+                secondaryText = suggestion.secondaryText || '';
+              }
+            } 
+            // Format dari AutocompleteService API (lama)
+            else if (suggestion.structured_formatting) {
+              mainText = suggestion.structured_formatting.main_text;
+              secondaryText = suggestion.structured_formatting.secondary_text || '';
+            } 
+            // Fallback ke description jika tidak ada format lain
+            else if (suggestion.description) {
+              mainText = suggestion.description;
+            }
+            // Fallback terakhir jika tidak ada format yang dikenali
+            else {
+              mainText = suggestion.text || 'Lokasi tidak diketahui';
+            }
+            
             return (
               <li
-                key={place_id}
+                key={id}
                 style={suggestionItemStyle}
                 onMouseDown={() => handleSelectSuggestion(suggestion)}
                 onMouseOver={(e) => {
@@ -453,7 +583,7 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
                   e.target.style.backgroundColor = '';
                 }}
               >
-                <strong>{main_text}</strong> <small style={{ color: '#9ca3af' }}>{secondary_text}</small>
+                <strong>{mainText}</strong> {secondaryText && <small style={{ color: '#9ca3af' }}>{secondaryText}</small>}
               </li>
             );
           })}
@@ -492,7 +622,7 @@ const vehicleTypes = [
 ];
 
 function App() {
-  const [position, setPosition] = useState([-7.2575, 112.7521]); // Default position (Sidoarjo, East Java)
+  const [position, setPosition] = useState(null);
   const [connected, setConnected] = useState(false);
   const [driverId, setDriverId] = useState('Driver-' + Math.floor(Math.random() * 1000));
   const [socket, setSocket] = useState(null);
@@ -513,7 +643,6 @@ function App() {
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
   
   // Tambahan state untuk kendaraan dan tol
-  const [vehicleType, setVehicleType] = useState('car');
   const [vehicleClass, setVehicleClass] = useState('gol1'); // default golongan tol
   const [nearestStartTollGate, setNearestStartTollGate] = useState(null);
   const [nearestEndTollGate, setNearestEndTollGate] = useState(null);
@@ -549,7 +678,6 @@ function App() {
     const timer = setTimeout(() => {
       if (mapRef.current) {
         mapRef.current.invalidateSize();
-        // console.log("Map size invalidated");
       }
     }, 500);
     
@@ -624,17 +752,8 @@ function App() {
           console.warn('Failed to fetch from alternative endpoint /toll/gates:', altErr.message);
         }
 
-        // Jika kedua endpoint gagal, gunakan data contoh
-        console.log('Using fallback sample toll gate data');
-        const sampleTollGates = [
-          { name: 'Gerbang Tol Waru', latitude: -7.3467, longitude: 112.7267, baseCost: 7500 },
-          { name: 'Gerbang Tol Sidoarjo', latitude: -7.4467, longitude: 112.7167, baseCost: 8500 },
-          { name: 'Gerbang Tol Porong', latitude: -7.5467, longitude: 112.6967, baseCost: 9500 },
-          { name: 'Gerbang Tol Gempol', latitude: -7.5567, longitude: 112.6867, baseCost: 10500 },
-          { name: 'Gerbang Tol Surabaya Barat', latitude: -7.2767, longitude: 112.6867, baseCost: 11500 },
-          { name: 'Gerbang Tol Surabaya Timur', latitude: -7.2667, longitude: 112.7867, baseCost: 12500 },
-        ];
-        setTollGates(sampleTollGates);
+        console.error('Failed to fetch toll gates data from all endpoints');
+        setTollGates([]);
       } catch (err) {
         console.error('Completely failed to get toll gates data:', err);
         setTollGates([]);
@@ -655,80 +774,6 @@ function App() {
     
     // Set more reasonable timeout - 15 seconds instead of 5
     const locationTimeout = 15000; 
-    
-    // For development/testing - use mock location if real location fails
-    const startMockLocation = () => {
-      console.log('Using mock location data for testing');
-      // Use a mock position near a toll gate
-      const mockPosition = {
-        coords: {
-          latitude: -7.3467, // Near Gerbang Tol Waru
-          longitude: 112.7267,
-          speed: 30 / 3.6, // 30 km/h in m/s
-          heading: 45
-        },
-        timestamp: Date.now()
-      };
-      
-      // Update the state with mock data
-      setPosition([mockPosition.coords.latitude, mockPosition.coords.longitude]);
-      setSpeed(mockPosition.coords.speed);
-      setHeading(mockPosition.coords.heading);
-      setLastUpdate(new Date().toLocaleTimeString());
-      setError('Using simulated location data (for testing)'); // Show mock data notice
-      
-      // If socket connection exists, send the mock data
-      if (socket && connected) {
-        socket.emit('driverLocation', {
-          deviceID: driverId,
-          location: {
-            type: 'Point',
-            coordinates: [mockPosition.coords.longitude, mockPosition.coords.latitude]
-          },
-          speed: mockPosition.coords.speed,
-          heading: mockPosition.coords.heading,
-          timestamp: Math.floor(Date.now() / 1000)
-        });
-      }
-      
-      // Start a timer to simulate movement
-      const mockInterval = setInterval(() => {
-        // Small random movement
-        const latChange = (Math.random() - 0.5) * 0.0005;
-        const lngChange = (Math.random() - 0.5) * 0.0005;
-        
-        // Update mock position
-        mockPosition.coords.latitude += latChange;
-        mockPosition.coords.longitude += lngChange;
-        mockPosition.coords.speed = 20 + Math.random() * 20; // Random speed between 20-40 km/h
-        mockPosition.coords.heading = (mockPosition.coords.heading + (Math.random() - 0.5) * 20) % 360;
-        mockPosition.timestamp = Date.now();
-        
-        // Update state
-        setPosition([mockPosition.coords.latitude, mockPosition.coords.longitude]);
-        setSpeed(mockPosition.coords.speed / 3.6); // Convert to m/s
-        setHeading(mockPosition.coords.heading);
-        setLastUpdate(new Date().toLocaleTimeString());
-        
-        // Send to server
-        if (socket && connected) {
-          socket.emit('driverLocation', {
-            deviceID: driverId,
-            location: {
-              type: 'Point',
-              coordinates: [mockPosition.coords.longitude, mockPosition.coords.latitude]
-            },
-            speed: mockPosition.coords.speed / 3.6,
-            heading: mockPosition.coords.heading,
-            timestamp: Math.floor(Date.now() / 1000)
-          });
-        }
-      }, 3000); // Update every 3 seconds
-      
-      // Store the interval ID directly so we can clear it later
-      window.mockLocationInterval = mockInterval;
-      setWatchId(-999); // Use a special ID to indicate mock location
-    };
     
     try {
       const id = navigator.geolocation.watchPosition(
@@ -762,21 +807,12 @@ function App() {
           // More user-friendly error messages
           if (err.code === 1) {
             setError('Location access denied. Please enable location services for this website.');
-            
-            // If permission denied, offer mock data
-            const useMock = window.confirm('Location access denied. Would you like to use simulated location data for testing?');
-            if (useMock) {
-              startMockLocation();
-            }
           } else if (err.code === 2) {
-            setError('Location unavailable. Using simulated location data for testing.');
-            startMockLocation();
+            setError('Location unavailable. Please try again later.');
           } else if (err.code === 3) {
-            setError('Location request timed out. Using simulated location data for testing.');
-            startMockLocation();
+            setError('Location request timed out. Please try again.');
           } else {
-            setError(`Error getting location: ${err.message}. Using simulated location data.`);
-            startMockLocation();
+            setError(`Error getting location: ${err.message}`);
           }
         },
         { 
@@ -786,31 +822,16 @@ function App() {
         }
       );
       
-      // Only set watchId if we haven't already set it to the mock value
-      if (watchId !== -999) {
-        setWatchId(id);
-      }
+      setWatchId(id);
     } catch (e) {
       console.error('Fatal error setting up geolocation:', e);
       setError(`Could not initialize location tracking: ${e.message}`);
-      // Offer mock data as a fallback
-      const useMock = window.confirm('Location tracking failed to initialize. Would you like to use simulated location data for testing?');
-      if (useMock) {
-        startMockLocation();
-      }
     }
   };
 
   // Stop tracking
   const stopTracking = () => {
-    if (watchId === -999) {
-      // If using mock location, clear the interval
-      if (window.mockLocationInterval) {
-        clearInterval(window.mockLocationInterval);
-        window.mockLocationInterval = null;
-      }
-      setWatchId(null);
-    } else if (watchId !== null) {
+    if (watchId !== null) {
       navigator.geolocation.clearWatch(watchId);
       setWatchId(null);
     }
@@ -855,25 +876,17 @@ function App() {
 
   // Set start point to current position
   const setCurrentAsStart = () => {
+    if (!position) {
+      setError('Location not available. Please start tracking first.');
+      return;
+    }
+    
     setStartPoint(position);
     setStartAddress(`Lokasi Saat Ini (${position[0].toFixed(4)}, ${position[1].toFixed(4)})`);
     
     // Calculate route info when both points are set
     if (endPoint) {
       calculateRouteInfo(position, endPoint);
-    }
-  };
-
-  // Set end point manually (in real app, would use geocoding API)
-  const setManualEndPoint = () => {
-    // For demo purposes, set a point 0.01 degrees away from current position
-    const newEndPoint = [position[0] + 0.01, position[1] + 0.01];
-    setEndPoint(newEndPoint);
-    setEndAddress(`Tujuan (${newEndPoint[0].toFixed(4)}, ${newEndPoint[1].toFixed(4)})`);
-    
-    // Calculate route info when both points are set
-    if (startPoint) {
-      calculateRouteInfo(startPoint, newEndPoint);
     }
   };
 
@@ -885,6 +898,9 @@ function App() {
     setEndAddress('');
     setRouteDistance(null);
     setRouteDuration(null);
+    setNearestStartTollGate(null);
+    setNearestEndTollGate(null);
+    setEstimatedTollCost(null);
   };
   
   // Fungsi untuk menghitung jarak antara dua titik (Haversine formula)
@@ -927,8 +943,6 @@ function App() {
       }
     });
     
-    // Return the nearest toll gate regardless of distance
-    // This allows toll calculation between cities that might be far from toll gates
     if (nearest) {
       console.log('Nearest toll gate found:', nearest.name, 'at distance:', nearest.distance.toFixed(2), 'km');
       return nearest;
@@ -938,8 +952,8 @@ function App() {
     return null;
   };
 
-  // Improved function to estimate default toll costs when API fails
-  const estimateDefaultTollCost = (startGate, endGate, vehicleClass) => {
+  // Function to estimate toll costs based on distance and vehicle class
+  const estimateTollCost = (startGate, endGate, vehicleClass) => {
     if (!startGate || !endGate) return null;
     
     // Check if gates are the same (no toll fee)
@@ -957,104 +971,28 @@ function App() {
       [endLat, endLng]
     );
     
-    // Determine region based on coordinates (rough estimation)
-    let region = "java"; // Default to Java
-    
-    // Check if it's in Sumatra (rough longitude check)
-    if (startLng < 105 && endLng < 105) {
-      region = "sumatra";
-    }
-    // Check if it's in Kalimantan
-    else if (startLat > 0 && endLat > 0 && startLng > 108 && endLng > 108) {
-      region = "kalimantan";
-    }
-    
-    // Base rates per km for different regions (in IDR)
-    const baseRatesPerKm = {
-      java: {
-        gol1: 900,
-        gol2: 1350,
-        gol3: 1800,
-        gol4: 2250,
-        gol5: 2700
+    // Call the API to get the toll cost
+    return axios.get(`${process.env.REACT_APP_API_URL}/api/calculate-toll`, {
+      params: {
+        startGate: startGate.name,
+        endGate: endGate.name,
+        vehicleType: vehicleClass
       },
-      sumatra: {
-        gol1: 800,
-        gol2: 1200,
-        gol3: 1600,
-        gol4: 2000,
-        gol5: 2400
-      },
-      kalimantan: {
-        gol1: 850,
-        gol2: 1275,
-        gol3: 1700,
-        gol4: 2125,
-        gol5: 2550
+      headers: {
+        'x-api-key': process.env.REACT_APP_API_KEY || '',
+        'Content-Type': 'application/json'
       }
-    };
-    
-    // Base entry fee for toll roads (in IDR)
-    const entryFees = {
-      java: {
-        gol1: 5000,
-        gol2: 7500,
-        gol3: 10000,
-        gol4: 12500,
-        gol5: 15000
-      },
-      sumatra: {
-        gol1: 4500,
-        gol2: 6750,
-        gol3: 9000,
-        gol4: 11250,
-        gol5: 13500
-      },
-      kalimantan: {
-        gol1: 4750,
-        gol2: 7125,
-        gol3: 9500,
-        gol4: 11875,
-        gol5: 14250
+    })
+    .then(response => {
+      if (response.data && typeof response.data.cost === 'number') {
+        return response.data.cost;
       }
-    };
-    
-    // Get rates for the selected region and vehicle class
-    const ratePerKm = baseRatesPerKm[region][vehicleClass] || baseRatesPerKm.java.gol1;
-    const entryFee = entryFees[region][vehicleClass] || entryFees.java.gol1;
-    
-    // Calculate distance cost
-    let distanceCost = Math.round(gateDistance * ratePerKm);
-    
-    // Check if it's a short trip (under 5km)
-    if (gateDistance < 5) {
-      // Short trips have a minimum fee
-      distanceCost = Math.max(distanceCost, entryFee * 0.8);
-    }
-    
-    // Check for premium toll road (e.g., Jakarta inner ring road, airport connections)
-    const isPremiumToll = isPremiumTollRoad(startGate.name) || isPremiumTollRoad(endGate.name);
-    const premiumMultiplier = isPremiumToll ? 1.2 : 1.0;
-    
-    // Final cost calculation: entry fee + distance-based cost
-    let tollCost = entryFee + (distanceCost * premiumMultiplier);
-    
-    // Round to nearest 500 IDR (standard practice in Indonesia)
-    tollCost = Math.ceil(tollCost / 500) * 500;
-    
-    return tollCost;
-  };
-
-  // Helper function to identify premium toll roads (typically urban/inner city or airport connections)
-  const isPremiumTollRoad = (gateName) => {
-    const premiumKeywords = [
-      'Dalam Kota', 'Inner City', 'Airport', 'Bandara', 'Soekarno', 'Juanda', 
-      'Sedyatmo', 'JORR', 'Ring Road', 'Lingkar', 'Harbour Road', 'Pelabuhan'
-    ];
-    
-    return premiumKeywords.some(keyword => 
-      gateName.toLowerCase().includes(keyword.toLowerCase())
-    );
+      return null;
+    })
+    .catch(error => {
+      console.error('Failed to calculate toll cost:', error);
+      return null;
+    });
   };
 
   // Calculate route information (distance, duration, and toll info)
@@ -1081,67 +1019,17 @@ function App() {
     setNearestStartTollGate(startTollGate);
     setNearestEndTollGate(endTollGate);
     
-    // Always call toll price API if toll is enabled, using the nearest gates
-    // regardless of distance
-    if (useToll) {
-      console.log('Toll is enabled, checking gates...');
-      if (startTollGate && endTollGate) {
-        console.log('Both toll gates found, calling toll price API');
-        console.log('Start gate:', startTollGate.name, 'End gate:', endTollGate.name);
-        
-        // Directly call the API with explicit parameters
-        console.log('*** MAKING DIRECT API CALL ***');
-        try {
-          // Build the URL and parameters
-          const apiBaseUrl = process.env.REACT_APP_API_URL || '';
-          const url = `${apiBaseUrl}/api/calculate-toll`;
-          const params = {
-            startGate: startTollGate.name,
-            endGate: endTollGate.name,
-            vehicleType: vehicleClass // Changed from vehicleType to vehicleClass
-          };
-          
-          console.log('URL:', url);
-          console.log('Params:', params);
-          
-          // Add API key if available
-          const apiKey = process.env.REACT_APP_API_KEY || 'default-dev-key';
-          const headers = {
-            'x-api-key': apiKey,
-            'Content-Type': 'application/json'
-          };
-          
-          // Make the API call
-          const response = await axios.get(url, { params, headers });
-          
-          console.log('API Response:', response.data);
-          
-          if (response.data && typeof response.data.cost === 'number') {
-            console.log('Toll cost estimate:', response.data.cost);
-            setEstimatedTollCost(response.data.cost);
-          } else {
-            console.warn('Invalid response format:', response.data);
-            // Use a default cost for demo purposes when API fails
-            const defaultCost = estimateDefaultTollCost(startTollGate, endTollGate, vehicleClass);
-            console.log('Using default cost estimation:', defaultCost);
-            setEstimatedTollCost(defaultCost);
-          }
-        } catch (error) {
-          console.error('API call failed:', error);
-          
-          // Use a default cost for demo purposes when API fails
-          const defaultCost = estimateDefaultTollCost(startTollGate, endTollGate, vehicleClass);
-          console.log('Using default cost estimation after error:', defaultCost);
-          setEstimatedTollCost(defaultCost);
-        }
-      } else {
-        console.warn('Cannot calculate toll: missing gates',
-          startTollGate ? 'OK' : 'X', 
-          endTollGate ? 'OK' : 'X');
+    // Calculate toll cost if toll is enabled and gates are found
+    if (useToll && startTollGate && endTollGate) {
+      console.log('Calculating toll cost...');
+      try {
+        const tollCost = await estimateTollCost(startTollGate, endTollGate, vehicleClass);
+        setEstimatedTollCost(tollCost);
+      } catch (error) {
+        console.error('Error calculating toll cost:', error);
         setEstimatedTollCost(null);
       }
     } else {
-      console.log('Toll is disabled, skipping toll calculation');
       setEstimatedTollCost(null);
     }
   };
@@ -1196,7 +1084,7 @@ function App() {
             <div style={styles.cardGrid}>
               <div style={styles.infoItem}>
                 <MapPin size={13} style={styles.infoIcon} />
-                {position[0].toFixed(4)}, {position[1].toFixed(4)}
+                {position ? `${position[0].toFixed(4)}, ${position[1].toFixed(4)}` : 'No location'}
               </div>
               <div style={styles.infoItem}>
                 <Navigation size={13} style={styles.infoIcon} />
@@ -1213,7 +1101,9 @@ function App() {
           <div style={styles.statusDetail}>
             <div style={styles.card}>
               <div style={styles.statusLabel}>Location</div>
-              <div style={{ wordWrap: 'break-word' }}>{position[0].toFixed(6)}, {position[1].toFixed(6)}</div>
+              <div style={{ wordWrap: 'break-word' }}>
+                {position ? `${position[0].toFixed(6)}, ${position[1].toFixed(6)}` : 'No location data'}
+              </div>
             </div>
             
             <div style={styles.card}>
@@ -1284,13 +1174,6 @@ function App() {
                             if (startPoint && endPoint) {
                               // Recalculate route info when toll preference changes
                               calculateRouteInfo(startPoint, endPoint);
-                              
-                              // Additional manual call to fetch toll estimates if we're enabling toll
-                              if (newUseToll && nearestStartTollGate && nearestEndTollGate) {
-                                console.log('Calling toll price API directly from toggle...');
-                                const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass);
-                                setEstimatedTollCost(defaultCost);
-                              }
                             }
                           }}
                           style={{
@@ -1368,9 +1251,8 @@ function App() {
                             onClick={() => {
                               console.log('Manual refresh of toll cost');
                               if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
-                                // Force recalculation with existing data
-                                const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass);
-                                setEstimatedTollCost(defaultCost);
+                                // Force recalculation
+                                calculateRouteInfo(startPoint, endPoint);
                               }
                             }}
                             style={{
@@ -1401,12 +1283,9 @@ function App() {
                           <button 
                             onClick={() => {
                               console.log('Manual refresh of toll cost');
-                              if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
-                                // Force manual calculation with existing data
-                                const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass);
-                                setEstimatedTollCost(defaultCost);
-                              } else {
-                                console.warn('Cannot refresh - missing required data');
+                              if (startPoint && endPoint) {
+                                // Force recalculation
+                                calculateRouteInfo(startPoint, endPoint);
                               }
                             }}
                             style={{
@@ -1418,7 +1297,7 @@ function App() {
                               display: 'flex',
                               alignItems: 'center'
                             }}
-                            title="Use default toll cost calculation"
+                            title="Refresh toll cost calculation"
                           >
                             <RefreshCw size={14} />
                           </button>
@@ -1427,7 +1306,7 @@ function App() {
                           Biaya tol belum tersedia
                         </div>
                         <div style={{fontSize: '12px', marginTop: '4px'}}>
-                          Klik refresh untuk perhitungan default
+                          Klik refresh untuk mencoba lagi
                         </div>
                       </div>
                     )}
@@ -1499,8 +1378,7 @@ function App() {
                     console.log('Vehicle class changed, recalculating toll cost');
                     // Short delay to ensure state updates
                     setTimeout(() => {
-                      const defaultCost = estimateDefaultTollCost(nearestStartTollGate, nearestEndTollGate, e.target.value);
-                      setEstimatedTollCost(defaultCost);
+                      calculateRouteInfo(startPoint, endPoint);
                     }, 100);
                   }
                 }}
@@ -1512,55 +1390,6 @@ function App() {
                 <option value="gol4">Golongan 4 (Truk dengan 4 sumbu)</option>
                 <option value="gol5">Golongan 5 (Truk dengan 5 sumbu atau lebih)</option>
               </select>
-              
-              {/* Debug button for direct API call */}
-              <button
-                onClick={() => {
-                  console.log('Using default toll cost calculation');
-                  
-                  try {
-                    // Use default values if needed
-                    const startGate = nearestStartTollGate || {
-                      name: 'Gerbang Tol Waru', 
-                      latitude: -7.3467, 
-                      longitude: 112.7267,
-                      baseCost: 7500
-                    };
-                    
-                    const endGate = nearestEndTollGate || {
-                      name: 'Gerbang Tol Sidoarjo', 
-                      latitude: -7.4467, 
-                      longitude: 112.7167,
-                      baseCost: 8500
-                    };
-                    
-                    // Calculate cost using our default estimation
-                    const defaultCost = estimateDefaultTollCost(startGate, endGate, vehicleClass);
-                    console.log('Default cost calculation:', defaultCost);
-                    setEstimatedTollCost(defaultCost);
-                    
-                    // Show message to user
-                    alert(`Perkiraan biaya tol: Rp ${defaultCost.toLocaleString('id-ID')}\n\nCatatan: Ini hanya perkiraan default karena API tidak tersedia.`);
-                  } catch (error) {
-                    console.error('Error in default calculation:', error);
-                    alert('Error in toll cost calculation: ' + error.message);
-                  }
-                }}
-                style={{
-                  backgroundColor: '#475569',
-                  color: 'white',
-                  padding: '6px 10px',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px'
-                }}
-              >
-                <RefreshCw size={14} /> Hitung Biaya Tol Default
-              </button>
             </div>
             
             {/* Route inputs */}
@@ -1617,7 +1446,14 @@ function App() {
                   />
                 )}
                 <button 
-                  onClick={setManualEndPoint}
+                  onClick={() => {
+                    if (!position) {
+                      setError('Please start tracking to select endpoints on the map');
+                      return;
+                    }
+                    // User needs to click on map
+                    setError('Click on the map to select your destination');
+                  }}
                   style={{...styles.button, width: 'auto', padding: '8px', marginLeft: '8px'}}
                   title="Pilih titik di peta"
                 >
@@ -1635,25 +1471,23 @@ function App() {
               )}
             </div>
             
-            {(startPoint && endPoint) && (
-              <button 
-                onClick={watchId === null ? startTracking : stopTracking} 
-                style={{
-                  ...styles.button,
-                  ...(watchId === null ? {} : styles.buttonRed),
-                  ...(buttonHover ? (watchId === null ? styles.buttonHover : styles.buttonRedHover) : {}),
-                  marginTop: '12px'
-                }}
-                onMouseEnter={() => setButtonHover(true)}
-                onMouseLeave={() => setButtonHover(false)}
-              >
-                {watchId === null ? (
-                  <><span>Start Tracking</span> <ArrowRight size={18} /></>
-                ) : (
-                  <><span>Stop Tracking</span> <RefreshCw size={18} /></>
-                )}
-              </button>
-            )}
+            <button 
+              onClick={watchId === null ? startTracking : stopTracking} 
+              style={{
+                ...styles.button,
+                ...(watchId === null ? {} : styles.buttonRed),
+                ...(buttonHover ? (watchId === null ? styles.buttonHover : styles.buttonRedHover) : {}),
+                marginTop: '12px'
+              }}
+              onMouseEnter={() => setButtonHover(true)}
+              onMouseLeave={() => setButtonHover(false)}
+            >
+              {watchId === null ? (
+                <><span>Start Tracking</span> <ArrowRight size={18} /></>
+              ) : (
+                <><span>Stop Tracking</span> <RefreshCw size={18} /></>
+              )}
+            </button>
           </div>
         </div>
       </div>
@@ -1661,7 +1495,7 @@ function App() {
       {/* Map Container */}
       <div className="map-wrapper" style={styles.mapContainer}>
         <MapContainer 
-          center={position} 
+          center={position || [-6.2088, 106.8456]} // Default to Jakarta if no position
           zoom={15} 
           style={{ height: "100%", width: "100%" }}
           whenReady={(map) => {
@@ -1676,19 +1510,21 @@ function App() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           {/* Current position marker */}
-          <Marker 
-            position={position}
-            icon={createCustomIcon('#2563eb')}
-          >
-            <Popup>
-              <div style={{ textAlign: 'center', padding: '4px' }}>
-                <div style={{ fontWeight: 'bold', color: '#2563eb' }}>{driverId}</div>
-                <div style={{ fontSize: '14px' }}>Speed: {(speed * 3.6).toFixed(1)} km/h</div>
-                <div style={{ fontSize: '14px' }}>Heading: {heading ? heading.toFixed(0) + '°' : 'N/A'}</div>
-                <div style={{ fontSize: '14px' }}>Last Update: {lastUpdate || 'Never'}</div>
-              </div>
-            </Popup>
-          </Marker>
+          {position && (
+            <Marker 
+              position={position}
+              icon={createCustomIcon('#2563eb')}
+            >
+              <Popup>
+                <div style={{ textAlign: 'center', padding: '4px' }}>
+                  <div style={{ fontWeight: 'bold', color: '#2563eb' }}>{driverId}</div>
+                  <div style={{ fontSize: '14px' }}>Speed: {(speed * 3.6).toFixed(1)} km/h</div>
+                  <div style={{ fontSize: '14px' }}>Heading: {heading ? heading.toFixed(0) + '°' : 'N/A'}</div>
+                  <div style={{ fontSize: '14px' }}>Last Update: {lastUpdate || 'Never'}</div>
+                </div>
+              </Popup>
+            </Marker>
+          )}
           
           {/* Start point marker */}
           {startPoint && (
@@ -1725,7 +1561,7 @@ function App() {
             <RouteLine startPoint={startPoint} endPoint={endPoint} />
           )}
           
-          <MapController position={position} />
+          {position && <MapController position={position} />}
         </MapContainer>
       </div>
     </div>
