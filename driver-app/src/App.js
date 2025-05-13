@@ -306,16 +306,13 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
   useEffect(() => {
     if (window.google && window.google.maps && window.google.maps.places) {
       try {
-        // Gunakan AutocompleteSuggestion API yang direkomendasikan Google
-        console.log('Menggunakan AutocompleteSuggestion API untuk autocomplete');
+        // Inisialisasi AutocompleteService sebagai instance
+        console.log('Menginisialisasi AutocompleteService');
         
-        // Simpan referensi ke API Places untuk digunakan nanti
-        autocompleteService.current = {
-          type: 'suggestion',
-          api: window.google.maps.places
-        };
+        // Simpan instance AutocompleteService untuk digunakan nanti
+        autocompleteService.current = new window.google.maps.places.AutocompleteService();
         
-        console.log('Berhasil menginisialisasi Google Maps Places API dengan AutocompleteSuggestion');
+        console.log('Berhasil menginisialisasi Google Maps Places API dengan AutocompleteService');
       } catch (error) {
         console.error('Error saat inisialisasi Google Maps Places API:', error);
         autocompleteService.current = null;
@@ -366,60 +363,30 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
       setShowSuggestions(true);
       setIsLoading(true);
       
-      // Gunakan AutocompleteSuggestion API untuk mendapatkan saran
+      // Gunakan AutocompleteService untuk mendapatkan saran
       if (autocompleteService.current) {
-        // Buat options untuk API baru
+        // Buat options untuk API
         const searchOptions = {
           input: newValue,
-          locationRestriction: {
-            // Batasi ke Indonesia
-            rectangle: {
-              // Batas koordinat Indonesia (perkiraan)
-              low: { latitude: -11.0, longitude: 95.0 },
-              high: { latitude: 6.0, longitude: 141.0 }
-            }
-          },
           componentRestrictions: { country: 'id' } // Batasi ke Indonesia
         };
         
         // Gunakan timeout untuk menghindari terlalu banyak permintaan
         const timeoutId = setTimeout(() => {
-          // Menggunakan AutocompleteSuggestion API yang baru
-          autocompleteService.current.api.AutocompleteService.getPlacePredictions(searchOptions)
-            .then(response => {
+          // Menggunakan metode getPlacePredictions dengan callback
+          autocompleteService.current.getPlacePredictions(
+            searchOptions,
+            (predictions, status) => {
               setIsLoading(false);
-              if (response && response.predictions) {
-                console.log('Suggestions received:', response.predictions);
-                setSuggestions(response.predictions);
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+                console.log('Suggestions received:', predictions);
+                setSuggestions(predictions);
               } else {
+                console.log('No suggestions found or error:', status);
                 setSuggestions([]);
               }
-            })
-            .catch(error => {
-              setIsLoading(false);
-              console.error('Error saat mendapatkan saran lokasi:', error);
-              setSuggestions([]);
-              
-              // Fallback ke metode lama jika API baru gagal
-              try {
-                if (window.google && window.google.maps && window.google.maps.places && window.google.maps.places.AutocompleteService) {
-                  const fallbackService = new window.google.maps.places.AutocompleteService();
-                  const fallbackOptions = {
-                    input: newValue,
-                    componentRestrictions: { country: 'id' }
-                  };
-                  
-                  fallbackService.getPlacePredictions(fallbackOptions, (predictions, status) => {
-                    if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-                      console.log('Fallback suggestions received:', predictions);
-                      setSuggestions(predictions);
-                    }
-                  });
-                }
-              } catch (fallbackError) {
-                console.error('Fallback autocomplete juga gagal:', fallbackError);
-              }
-            });
+            }
+          );
         }, 300); // Delay 300ms untuk mengurangi jumlah permintaan
         
         return () => clearTimeout(timeoutId);
@@ -434,25 +401,17 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
 
   // Handler untuk pemilihan suggestion
   const handleSelectSuggestion = async (suggestion) => {
-    // Ekstrak deskripsi alamat dari suggestion berdasarkan format API baru
+    // Ekstrak deskripsi alamat dari suggestion
     let address = '';
     let placeId = '';
     
-    // Prioritaskan format dari AutocompleteSuggestion API
-    if (suggestion.formattedText) {
-      // Format utama dari AutocompleteSuggestion API
-      address = suggestion.formattedText;
-      placeId = suggestion.placeId;
-    } else if (suggestion.primaryText && suggestion.secondaryText) {
-      // Format terpisah dari AutocompleteSuggestion API
-      address = `${suggestion.primaryText}, ${suggestion.secondaryText}`;
-      placeId = suggestion.placeId;
-    } else if (suggestion.description) {
-      // Format lama dari AutocompleteService (untuk kompatibilitas)
+    // Format dari AutocompleteService
+    if (suggestion.description) {
+      // Format standar dari AutocompleteService
       address = suggestion.description;
       placeId = suggestion.place_id;
     } else if (suggestion.structured_formatting) {
-      // Format alternatif dari AutocompleteService (untuk kompatibilitas)
+      // Format alternatif dengan structured_formatting
       const { main_text, secondary_text } = suggestion.structured_formatting;
       address = secondary_text ? `${main_text}, ${secondary_text}` : main_text;
       placeId = suggestion.place_id;
@@ -462,44 +421,72 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
     setInputValue(address);
     setShowSuggestions(false);
     setSuggestions([]);
+    setIsLoading(true);
     
     try {
-      // Jika kita memiliki placeId, gunakan Place API untuk mendapatkan detail lokasi
-      if (placeId && autocompleteService.current) {
+      // Definisikan fungsi fallback geocoding
+      const fallbackGeocoding = async () => {
         try {
-          // Gunakan fetchPlace dari API baru untuk mendapatkan detail lokasi
-          const placeResult = await autocompleteService.current.api.Place.fetchPlace({
-            id: placeId,
-            fields: ['location']
-          });
+          console.log('Menggunakan fallback geocoding dengan getGeocode');
+          const results = await getGeocode({ address });
+          const { lat, lng } = await getLatLng(results[0]);
+          console.log('Berhasil mendapatkan lokasi dengan getGeocode:', lat, lng);
           
-          if (placeResult && placeResult.place && placeResult.place.location) {
-            const location = placeResult.place.location;
-            
-            // Panggil callback onSelect dengan alamat dan posisi
-            onSelect && onSelect({
-              address,
-              position: [location.latitude, location.longitude]
-            });
-            return;
-          }
-        } catch (placeError) {
-          console.warn('Error saat mengambil detail tempat dengan Place API:', placeError);
-          // Lanjutkan dengan metode fallback jika gagal
+          // Panggil callback onSelect dengan alamat dan posisi
+          onSelect && onSelect({
+            address,
+            position: [lat, lng]
+          });
+        } catch (geocodeError) {
+          console.error('Error saat geocoding:', geocodeError);
+        } finally {
+          setIsLoading(false);
         }
+      };
+      
+      // Jika kita memiliki placeId, gunakan PlacesService untuk mendapatkan detail lokasi
+      if (placeId) {
+        try {
+          console.log('Mencoba mendapatkan lokasi dengan PlacesService');
+          // Buat PlacesService dengan dummy element
+          const placesService = new window.google.maps.places.PlacesService(document.createElement('div'));
+          
+          // Gunakan getDetails untuk mendapatkan detail lokasi
+          placesService.getDetails(
+            { placeId: placeId, fields: ['geometry'] },
+            (place, status) => {
+              if (status === window.google.maps.places.PlacesServiceStatus.OK && place && place.geometry && place.geometry.location) {
+                const location = place.geometry.location;
+                console.log('Berhasil mendapatkan lokasi dengan PlacesService:', location);
+                
+                // Panggil callback onSelect dengan alamat dan posisi
+                onSelect && onSelect({
+                  address,
+                  position: [location.lat(), location.lng()]
+                });
+                setIsLoading(false);
+              } else {
+                console.warn('PlacesService gagal mendapatkan detail lokasi, status:', status);
+                // Lanjutkan dengan metode fallback
+                fallbackGeocoding();
+              }
+            }
+          );
+        } catch (placesServiceError) {
+          console.warn('Error saat menggunakan PlacesService:', placesServiceError);
+          // Lanjutkan dengan metode fallback
+          fallbackGeocoding();
+        }
+        return;
       }
       
-      // Fallback: Gunakan getGeocode jika Place API gagal atau tidak tersedia
-      const results = await getGeocode({ address });
-      const { lat, lng } = await getLatLng(results[0]);
-      
-      // Panggil callback onSelect dengan alamat dan posisi
-      onSelect && onSelect({
-        address,
-        position: [lat, lng]
-      });
+      // Jalankan fallback geocoding jika tidak ada placeId
+      if (!placeId) {
+        await fallbackGeocoding();
+      }
     } catch (error) {
       console.error('Error saat memilih lokasi:', error);
+      setIsLoading(false);
     }
   };
 
@@ -509,10 +496,33 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
     onChange && onChange({ target: { value: '' } });
     setSuggestions([]);
     setShowSuggestions(false);
+    setIsLoading(false);
+  };
+
+  // Style untuk loading indicator
+  const loadingIndicatorStyle = {
+    position: 'absolute',
+    right: inputValue ? '36px' : '12px',
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    border: '2px solid #9ca3af',
+    borderTopColor: '#3b82f6',
+    animation: 'spin 1s linear infinite'
   };
 
   return (
     <div style={{ position: 'relative', width: '100%' }}>
+      {/* Tambahkan animasi spin untuk loading indicator */}
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
+      
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <Search size={16} style={{ position: 'absolute', left: '12px', color: '#9ca3af' }} />
         <input
@@ -523,15 +533,22 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
           style={{
             ...style,
             paddingLeft: '36px',
-            paddingRight: inputValue ? '36px' : '12px'
+            paddingRight: isLoading ? '56px' : (inputValue ? '36px' : '12px')
           }}
           onFocus={() => inputValue && setShowSuggestions(true)}
           onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
         />
+        {isLoading && <div style={loadingIndicatorStyle} />}
         {inputValue && (
           <X 
             size={16} 
-            style={{ position: 'absolute', right: '12px', color: '#9ca3af', cursor: 'pointer' }} 
+            style={{ 
+              position: 'absolute', 
+              right: '12px', 
+              color: '#9ca3af', 
+              cursor: 'pointer',
+              zIndex: 2
+            }} 
             onClick={handleClearInput}
           />
         )}
@@ -589,6 +606,12 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
           })}
         </ul>
       )}
+      
+      {showSuggestions && suggestions.length === 0 && isLoading && (
+        <div style={{...dropdownStyle, padding: '10px', textAlign: 'center', color: '#9ca3af'}}>
+          Mencari lokasi...
+        </div>
+      )}
     </div>
   );
 };
@@ -612,6 +635,8 @@ function MapController({ position }) {
 }
 
 // Daftar tipe kendaraan beserta golongan tol
+// Variabel ini tidak digunakan saat ini, dikomentari untuk menghindari peringatan ESLint
+/*
 const vehicleTypes = [
   { label: 'Mobil', value: 'car', golonganTol: 'gol1' },
   { label: 'Truk Kecil', value: 'small_truck', golonganTol: 'gol2' },
@@ -620,6 +645,7 @@ const vehicleTypes = [
   { label: 'Bus', value: 'bus', golonganTol: 'gol3' },
   { label: 'Motor', value: 'motorcycle', golonganTol: 'gol1' }
 ];
+*/
 
 function App() {
   const [position, setPosition] = useState(null);
@@ -960,6 +986,8 @@ function App() {
     if (startGate.name === endGate.name) return 0;
     
     // Extract locations from gates
+    // Variabel-variabel berikut tidak digunakan saat ini, dikomentari untuk menghindari peringatan ESLint
+    /*
     const startLat = startGate.latitude || startGate.lat || 0;
     const startLng = startGate.longitude || startGate.lng || 0;
     const endLat = endGate.latitude || endGate.lat || 0;
@@ -970,6 +998,7 @@ function App() {
       [startLat, startLng], 
       [endLat, endLng]
     );
+    */
     
     // Call the API to get the toll cost
     return axios.get(`${process.env.REACT_APP_API_URL}/api/calculate-toll`, {
