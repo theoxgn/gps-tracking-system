@@ -18,6 +18,14 @@ module.exports = {
       
       // Database connection (for future implementation)
       dbConnection: process.env.DB_CONNECTION_STRING || '',
+      
+      // Konfigurasi untuk chat storage
+      logChat: process.env.LOG_CHAT === 'true' || true,
+      chatLogPrefix: process.env.CHAT_LOG_PREFIX || 'chat_',
+      // Jumlah pesan chat yang disimpan di memori per driver
+      maxChatMessagesPerDriver: parseInt(process.env.MAX_CHAT_MESSAGES) || 200,
+      // Berapa lama menyimpan pesan chat dalam hari
+      chatMessageRetentionDays: parseInt(process.env.CHAT_RETENTION_DAYS) || 30
     },
     
     // Security settings
@@ -46,5 +54,15 @@ module.exports = {
       // Appearance
       driverMarkerColor: '#3388ff',
       selectedDriverMarkerColor: '#ff3388'
+    },
+
+    // Tambahkan konfigurasi chat
+    chat: {
+      // Apakah fitur chat diaktifkan
+      enabled: process.env.ENABLE_CHAT === 'true' || true,
+      // Batas ukuran pesan dalam karakter
+      maxMessageLength: parseInt(process.env.MAX_MESSAGE_LENGTH) || 1000,
+      // Throttling: batas jumlah pesan per menit per client
+      messageRateLimit: parseInt(process.env.MESSAGE_RATE_LIMIT) || 30
     }
   };

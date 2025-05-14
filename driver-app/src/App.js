@@ -21,6 +21,7 @@ import L from 'leaflet';
 import { getGeocode, getLatLng } from 'use-places-autocomplete';
 import { LoadScript } from '@react-google-maps/api';
 import axios from "axios";
+import ChatComponent from './ChatComponent';
 
 // Konstanta untuk libraries Google Maps agar tidak di-re-render
 const mapsLibraries = ['places'];
@@ -757,6 +758,12 @@ function App() {
     socketInstance.on('connect', () => {
       console.log('Connected to server');
       setConnected(true);
+      
+      // Identify as a driver to the server
+      socketInstance.emit('identify', {
+        type: 'driver',
+        driverId: driverId
+      });
     });
     
     socketInstance.on('disconnect', () => {
@@ -769,7 +776,7 @@ function App() {
     return () => {
       if (socketInstance) socketInstance.disconnect();
     };
-  }, []);
+  }, [driverId]);
 
   // Force map resize when component mounts
   useEffect(() => {
@@ -1686,6 +1693,12 @@ function App() {
           
           {position && <MapController position={position} />}
         </MapContainer>
+        
+        <ChatComponent 
+          socket={socket} 
+          driverId={driverId} 
+          connected={connected} 
+        />
       </div>
     </div>
     </LoadScript>

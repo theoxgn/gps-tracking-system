@@ -6,6 +6,7 @@ const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
 const config = require("./config");
+const { v4: uuidv4 } = require('uuid'); // Tambahkan untuk keperluan ID pesan chat
 
 // Create Express application
 const app = express();
@@ -49,6 +50,166 @@ if (!fs.existsSync(config.storage.logDirectory)) {
 // Initialize driver data storage
 let activeDrivers = {};
 let driverHistory = {};
+// Initialize chat data storage
+let chatHistory = {}; // Format: { driverId: [messages] }
+
+// Utilitas untuk validasi dan rate limiting chat
+const chatValidation = {
+  // Rate limit: menyimpan timestamp pesan terakhir per client
+  messageCounts: {},
+  
+  /**
+   * Memvalidasi pesan dan mengecek rate limit
+   * @param {Object} message - Objek pesan
+   * @param {String} clientId - ID client
+   * @returns {Object} - Hasil validasi {valid, error}
+   */
+  validateMessage: function(message, clientId) {
+    // Validasi format pesan
+    if (!message || typeof message !== 'object') {
+      return { valid: false, error: 'Invalid message format' };
+    }
+    
+    // Validasi field yang diperlukan
+    if (!message.text || typeof message.text !== 'string') {
+      return { valid: false, error: 'Message text is required' };
+    }
+    
+    if (!message.from || typeof message.from !== 'string') {
+      return { valid: false, error: 'Message sender (from) is required' };
+    }
+    
+    if (!message.to || typeof message.to !== 'string') {
+      return { valid: false, error: 'Message recipient (to) is required' };
+    }
+    
+    // Validasi panjang pesan
+    if (message.text.length > (config.chat && config.chat.maxMessageLength ? config.chat.maxMessageLength : 1000)) {
+      return { 
+        valid: false, 
+        error: `Message too long. Maximum length is ${config.chat ? config.chat.maxMessageLength : 1000} characters` 
+      };
+    }
+    
+    // Rate limiting
+    if (config.chat && config.chat.messageRateLimit > 0) {
+      const now = Date.now();
+      
+      // Inisialisasi atau reset jika sudah lebih dari 1 menit
+      if (!this.messageCounts[clientId] || now - this.messageCounts[clientId].firstMessage > 60000) {
+        this.messageCounts[clientId] = {
+          count: 1,
+          firstMessage: now,
+          lastMessage: now
+        };
+      } else {
+        // Tingkatkan hitungan dan perbarui waktu pesan terakhir
+        this.messageCounts[clientId].count++;
+        this.messageCounts[clientId].lastMessage = now;
+        
+        // Cek apakah melebihi batas
+        if (this.messageCounts[clientId].count > config.chat.messageRateLimit) {
+          return { 
+            valid: false, 
+            error: `Rate limit exceeded. Maximum ${config.chat.messageRateLimit} messages per minute` 
+          };
+        }
+      }
+    }
+    
+    return { valid: true };
+  },
+  
+  /**
+   * Membersihkan data rate limiting
+   */
+  cleanupRateLimits: function() {
+    const now = Date.now();
+    Object.keys(this.messageCounts).forEach(clientId => {
+      if (now - this.messageCounts[clientId].lastMessage > 120000) { // 2 menit
+        delete this.messageCounts[clientId];
+      }
+    });
+  }
+};
+
+/**
+ * Utilitas untuk mengelola riwayat chat
+ */
+const chatUtils = {
+  /**
+   * Menyimpan pesan ke riwayat chat dan file log
+   * @param {Object} message - Objek pesan
+   */
+  saveMessage: function(message) {
+    const driverId = message.to === 'monitor' ? message.from : message.to;
+    
+    // Inisialisasi riwayat chat untuk driver jika belum ada
+    if (!chatHistory[driverId]) {
+      chatHistory[driverId] = [];
+    }
+    
+    // Tambahkan pesan ke riwayat
+    chatHistory[driverId].push(message);
+    
+    // Batasi jumlah pesan yang disimpan di memori (simpan 200 pesan terakhir atau sesuai konfigurasi)
+    const maxMessages = config.chat && config.chat.maxChatMessagesPerDriver 
+      ? config.chat.maxChatMessagesPerDriver 
+      : 200;
+      
+    if (chatHistory[driverId].length > maxMessages) {
+      chatHistory[driverId] = chatHistory[driverId].slice(-maxMessages);
+    }
+    
+    // Log chat ke file jika diaktifkan di config
+    if (config.storage && config.storage.logChat) {
+      const today = new Date().toISOString().slice(0, 10);
+      const logFile = path.join(
+        config.storage.logDirectory,
+        `${config.storage.chatLogPrefix || 'chat_'}${driverId}_${today}.json`
+      );
+      
+      fs.appendFile(
+        logFile, 
+        JSON.stringify(message) + "\n",
+        err => {
+          if (err) console.error("Error writing chat to log file:", err);
+        }
+      );
+    }
+  },
+  
+  /**
+   * Menandai pesan sebagai telah dibaca
+   * @param {Array} messageIds - Array ID pesan
+   * @param {String} reader - ID pembaca
+   * @returns {Array} - Array driver IDs yang pesannya diupdate
+   */
+  markMessagesAsRead: function(messageIds, reader) {
+    // Tandai pesan sebagai telah dibaca di semua riwayat chat
+    return Object.keys(chatHistory).map(driverId => {
+      let updated = false;
+      
+      chatHistory[driverId] = chatHistory[driverId].map(msg => {
+        if (messageIds.includes(msg.id)) {
+          updated = true;
+          return { ...msg, read: true };
+        }
+        return msg;
+      });
+      
+      // Jika ada pesan yang diupdate, kirimkan notifikasi pesan dibaca
+      if (updated) {
+        return {
+          driverId,
+          updated: true
+        };
+      }
+      
+      return null;
+    }).filter(Boolean); // Filter hasil null
+  }
+};
 
 // Basic API authentication middleware
 const authenticateAPI = (req, res, next) => {
@@ -104,7 +265,7 @@ app.get("/api/calculate-toll", (req, res) => {
   if (cost === null) {
     return res.status(404).json({ error: "Data biaya tol tidak ditemukan untuk kombinasi tersebut" });
   }
-  res.json({ startGate, endGate, vehicleType, tollCost: cost });
+  res.json({ startGate, endGate, vehicleType, cost });
 });
 
 // API to get driver history for a specific time period
@@ -129,6 +290,20 @@ app.get("/api/history/:driverId", (req, res) => {
   }
   
   res.json({ history });
+});
+
+// API untuk mengambil riwayat chat
+app.get("/api/chat/:driverId", authenticateAPI, (req, res) => {
+  const driverId = req.params.driverId;
+  
+  if (!chatHistory[driverId]) {
+    return res.status(200).json({ messages: [] });
+  }
+  
+  const limit = parseInt(req.query.limit) || 50;
+  const messages = chatHistory[driverId].slice(-limit);
+  
+  res.json({ messages });
 });
 
 // Simple health check
@@ -295,6 +470,112 @@ io.on("connection", (socket) => {
     }
   });
   
+  // ===== CHAT FEATURE EVENT HANDLERS =====
+  
+  // Handle chat message sending
+  socket.on("sendMessage", (data) => {
+    // Validasi data pesan menggunakan utilitas validasi
+    const validation = chatValidation.validateMessage(data, clientId);
+    if (!validation.valid) {
+      console.error(`Invalid message from ${clientId}: ${validation.error}`);
+      socket.emit("messageError", {
+        error: validation.error,
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
+    // Tambahkan properti tambahan ke pesan
+    const message = {
+      ...data,
+      id: uuidv4(),
+      timestamp: data.timestamp || Date.now(),
+      read: false
+    };
+    
+    console.log(`Chat message from ${message.from} to ${message.to}: ${message.text.substring(0, 30)}${message.text.length > 30 ? '...' : ''}`);
+    
+    // Simpan pesan ke riwayat
+    chatUtils.saveMessage(message);
+    
+    // Kirim pesan ke penerima
+    if (message.to === 'monitor') {
+      // Pesan dari driver ke monitor
+      // Kirim ke semua monitor yang terhubung
+      Object.values(connectedClients.monitors).forEach(socketId => {
+        io.to(socketId).emit("receiveMessage", message);
+      });
+    } else {
+      // Pesan dari monitor ke driver
+      const driverSocketId = connectedClients.drivers[message.to];
+      if (driverSocketId) {
+        io.to(driverSocketId).emit("receiveMessage", message);
+      } else {
+        console.log(`Driver ${message.to} tidak terhubung, pesan disimpan untuk dibaca nanti`);
+      }
+    }
+    
+    // Konfirmasi pengiriman ke pengirim
+    socket.emit("receiveMessage", {
+      ...message,
+      delivered: true
+    });
+  });
+  
+  // Handle request for chat history
+  socket.on("getChatHistory", (data, callback) => {
+    // Validasi parameter
+    if (!data || !data.driverId) {
+      console.error("Invalid request for chat history");
+      if (typeof callback === 'function') {
+        callback({ error: "Invalid request parameters" });
+      }
+      return;
+    }
+    
+    console.log(`Chat history requested for driver: ${data.driverId}`);
+    
+    // Kirim riwayat chat
+    if (typeof callback === 'function') {
+      callback({
+        messages: chatHistory[data.driverId] || []
+      });
+    }
+  });
+  
+  // Handle marking messages as read
+  socket.on("markAsRead", (data) => {
+    // Validasi parameter
+    if (!data || !data.messageIds || !data.reader) {
+      console.error("Invalid request to mark messages as read");
+      return;
+    }
+    
+    console.log(`Marking ${data.messageIds.length} messages as read by ${data.reader}`);
+    
+    // Proses penandaan pesan sebagai telah dibaca
+    const updatedDrivers = chatUtils.markMessagesAsRead(data.messageIds, data.reader);
+    
+    // Kirim notifikasi pesan telah dibaca ke pengirim asli
+    if (updatedDrivers && updatedDrivers.length > 0) {
+      updatedDrivers.forEach(({ driverId }) => {
+        // Tentukan penerima notifikasi berdasarkan reader
+        if (data.reader === 'monitor') {
+          // Jika monitor yang membaca, kirim notifikasi ke driver terkait
+          const driverSocketId = connectedClients.drivers[driverId];
+          if (driverSocketId) {
+            io.to(driverSocketId).emit("messageRead", data);
+          }
+        } else {
+          // Jika driver yang membaca, kirim notifikasi ke semua monitor
+          Object.values(connectedClients.monitors).forEach(socketId => {
+            io.to(socketId).emit("messageRead", data);
+          });
+        }
+      });
+    }
+  });
+  
   // Handle client disconnection
   socket.on("disconnect", () => {
     console.log(`Client disconnected: ${clientId} (${socket.id})`);
@@ -331,6 +612,7 @@ io.on("connection", (socket) => {
 const cleanupInactiveDrivers = () => {
   const now = Date.now() / 1000;
   const timeoutThreshold = 10 * 60; // 10 minutes
+  const chatCleanupThreshold = 30 * 24 * 60 * 60; // 30 days (atau ambil dari config)
   
   Object.entries(activeDrivers).forEach(([driverId, driverData]) => {
     if (driverData.status === 'offline' || (now - driverData.timestamp) > timeoutThreshold) {
@@ -344,6 +626,28 @@ const cleanupInactiveDrivers = () => {
       });
     }
   });
+  
+  // Cleanup old chat messages
+  Object.entries(chatHistory).forEach(([driverId, messages]) => {
+    // Filter out messages older than the threshold
+    const newMessages = messages.filter(message => 
+      (now - message.timestamp/1000) < chatCleanupThreshold
+    );
+    
+    // If we removed any messages, update the history
+    if (newMessages.length < messages.length) {
+      console.log(`Cleaned up ${messages.length - newMessages.length} old chat messages for ${driverId}`);
+      chatHistory[driverId] = newMessages;
+    }
+    
+    // If no messages left, remove the driver entry
+    if (newMessages.length === 0) {
+      delete chatHistory[driverId];
+    }
+  });
+  
+  // Cleanup rate limits
+  chatValidation.cleanupRateLimits();
 };
 
 // Run cleanup every 5 minutes
@@ -405,6 +709,9 @@ app.get('/api/toll-gates', (req, res) => {
   res.json(tollgates);
 });
 
+// Tambahkan interval untuk pembersihan rate limits chat
+setInterval(chatValidation.cleanupRateLimits, 5 * 60 * 1000);
+
 // Start the server
 server.listen(config.server.port, config.server.host, () => {
   console.log(`
@@ -416,6 +723,7 @@ server.listen(config.server.port, config.server.host, () => {
 ║ Time      : ${new Date().toISOString()}          ║
 ║ Log Dir   : ${config.storage.logDirectory}                                 ║
 ║ Demo Mode : ${enableSampleData ? 'Enabled' : 'Disabled'}                                 ║
+║ Chat      : ${config.chat && config.chat.enabled ? 'Enabled' : 'Disabled'}                                 ║
 ╚════════════════════════════════════════════════════════╝
   `);
 });

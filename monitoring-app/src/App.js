@@ -14,6 +14,7 @@ import {
   Activity,
   Target
 } from 'lucide-react';
+import MonitorChatComponent from './MonitorChatComponent';
 
 // Fix for default marker icons in Leaflet with React
 import L from 'leaflet';
@@ -172,6 +173,10 @@ function App() {
     socketInstance.on('connect', () => {
       console.log('Connected to monitoring server');
       setConnected(true);
+      // Identify as monitor to the server
+      socketInstance.emit('identify', {
+        type: 'monitor'
+      });
     });
     
     socketInstance.on('disconnect', () => {
@@ -350,6 +355,13 @@ function App() {
             autoCenter={autoCenter} 
           />
         </MapContainer>
+        
+        <MonitorChatComponent 
+          socket={socket} 
+          drivers={drivers} 
+          activeDriver={activeDriver} 
+          connected={connected} 
+        />
       </div>
     </div>
   );
