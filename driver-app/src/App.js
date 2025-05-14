@@ -33,12 +33,12 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.4/images/marker-shadow.png',
 });
 
-// Custom marker with color
+// Custom marker dengan flat design
 const createCustomIcon = (color) => {
   return L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="background-color: ${color}; width: 22px; height: 22px; border-radius: 50%; border: 2px solid white;"></div>`,
-    iconSize: [25, 25],
+    html: `<div style="background-color: ${color}; width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 2px rgba(0,0,0,0.1);"><div style="width: 8px; height: 8px; background-color: white; border-radius: 50%;"></div></div>`,
+    iconSize: [24, 24],
     iconAnchor: [12, 12],
     popupAnchor: [0, -12]
   });
@@ -63,90 +63,91 @@ const RouteLine = ({ startPoint, endPoint }) => {
   );
 };
 
-// Tambahkan CSS inline untuk styling
+// Tambahkan CSS inline untuk styling dengan flat design yang modern dan responsif
 const styles = {
   container: {
     display: 'flex',
     height: '100vh',
-    overflow: 'hidden'
+    overflow: 'hidden',
+    position: 'relative',
+    '@media (max-width: 768px)': {
+      flexDirection: 'column'
+    }
   },
   sidebar: {
     width: '320px',
-    backgroundColor: '#111827', // bg-gray-900
-    color: 'white',
+    backgroundColor: '#f8fafc', // light background for flat design
+    color: '#334155', // slate-700 for better readability
     display: 'flex',
     flexDirection: 'column',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-    borderRight: '1px solid #1f2937',
-    borderTopRightRadius: '24px',
-    borderBottomRightRadius: '24px',
-    overflow: 'hidden'
+    borderRight: '1px solid #e2e8f0', // subtle border
+    overflow: 'hidden',
+    transition: 'all 0.3s ease',
+    '@media (max-width: 768px)': {
+      width: '100%',
+      height: '50%',
+      borderRight: 'none',
+      borderBottom: '1px solid #e2e8f0'
+    }
   },
   header: {
-    background: 'linear-gradient(to right, #1d4ed8, #1e40af)', // from-blue-700 to-blue-900
-    padding: '24px',
-    borderBottomLeftRadius: '0px',
-    borderBottomRightRadius: '24px',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-    borderBottom: '2px solid #1e40af',
+    backgroundColor: '#3b82f6', // flat blue color
+    padding: '16px',
     display: 'flex',
     flexDirection: 'column',
     gap: '8px'
   },
   headerTitle: {
-    fontSize: '22px',
-    fontWeight: '800',
-    letterSpacing: '-0.025em',
+    fontSize: '20px',
+    fontWeight: '700',
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    textShadow: '0 2px 4px rgba(0,0,0,0.1)',
-    marginBottom: '8px'
+    marginBottom: '8px',
+    color: 'white'
   },
   headerIcon: {
-    color: '#93c5fd' // text-blue-300
+    color: 'white'
   },
   statusBadge: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     fontSize: '12px',
-    color: '#d1d5db' // text-gray-300
+    color: 'rgba(255, 255, 255, 0.9)'
   },
   content: {
     flex: '1',
-    padding: '20px',
-    backgroundColor: '#1f2937', // bg-gray-800
+    padding: '16px',
+    backgroundColor: '#ffffff',
     display: 'flex',
     flexDirection: 'column',
     overflowY: 'auto'
   },
   sectionTitle: {
-    fontSize: '18px',
+    fontSize: '16px',
     fontWeight: '600',
-    marginBottom: '16px',
-    color: '#bfdbfe', // text-blue-200
+    marginBottom: '12px',
+    color: '#3b82f6', // flat blue
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    borderBottom: '1px solid #1d4ed8', // border-blue-700
+    borderBottom: '1px solid #e2e8f0',
     paddingBottom: '8px'
   },
   card: {
     padding: '16px',
-    backgroundColor: '#374151', // bg-gray-700
-    borderRadius: '12px',
+    backgroundColor: '#f1f5f9', // very light blue-gray
+    borderRadius: '8px',
     marginBottom: '12px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
     transition: 'all 0.2s ease',
     cursor: 'pointer',
-    border: '2px solid transparent'
+    border: '1px solid #e2e8f0'
   },
   cardActive: {
-    backgroundColor: '#1d4ed8', // bg-blue-700
-    borderColor: '#60a5fa', // border-blue-400
-    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-    transform: 'scale(1.05)'
+    backgroundColor: '#3b82f6', // flat blue
+    color: 'white',
+    borderColor: '#3b82f6'
   },
   cardHeader: {
     display: 'flex',
@@ -162,7 +163,7 @@ const styles = {
   },
   cardTime: {
     fontSize: '12px',
-    color: '#d1d5db', // text-gray-300
+    color: '#64748b', // slate-500
     display: 'flex', 
     alignItems: 'center',
     gap: '4px'
@@ -173,7 +174,7 @@ const styles = {
     gap: '8px',
     marginTop: '8px',
     fontSize: '12px',
-    color: '#e5e7eb' // text-gray-200
+    color: '#475569' // slate-600
   },
   infoItem: {
     display: 'flex',
@@ -181,12 +182,12 @@ const styles = {
     gap: '4px'
   },
   infoIcon: {
-    color: '#93c5fd' // text-blue-300
+    color: '#3b82f6' // flat blue
   },
   controlsSection: {
-    padding: '20px',
-    background: 'linear-gradient(to right, #1e40af, #1e3a8a)', // from-blue-800 to-blue-900
-    borderTop: '1px solid #1d4ed8', // border-blue-700
+    padding: '16px',
+    backgroundColor: '#f8fafc',
+    borderTop: '1px solid #e2e8f0',
     display: 'flex',
     flexDirection: 'column',
     gap: '8px'
@@ -197,12 +198,17 @@ const styles = {
   input: {
     width: '100%',
     padding: '12px',
-    backgroundColor: '#374151', // bg-gray-700
-    color: 'white',
-    border: 'none',
-    borderRadius: '12px',
+    backgroundColor: '#ffffff',
+    color: '#334155',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
     marginBottom: '12px',
-    fontSize: '14px'
+    fontSize: '14px',
+    transition: 'border-color 0.2s ease',
+    '&:focus': {
+      borderColor: '#3b82f6',
+      outline: 'none'
+    }
   },
   button: {
     display: 'flex',
@@ -210,69 +216,74 @@ const styles = {
     justifyContent: 'center',
     width: '100%',
     padding: '12px',
-    backgroundColor: '#3b82f6', // bg-blue-500
+    backgroundColor: '#3b82f6', // flat blue
     color: 'white',
     fontWeight: '600',
-    borderRadius: '12px',
+    borderRadius: '8px',
     border: 'none',
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+    transition: 'background-color 0.2s ease',
     gap: '8px',
     fontSize: '16px'
   },
   buttonRed: {
-    backgroundColor: '#ef4444' // bg-red-500
+    backgroundColor: '#ef4444' // flat red
   },
   buttonHover: {
-    backgroundColor: '#2563eb' // bg-blue-600
+    backgroundColor: '#2563eb' // darker blue
   },
   buttonRedHover: {
-    backgroundColor: '#dc2626' // bg-red-600
+    backgroundColor: '#dc2626' // darker red
   },
   mapContainer: {
     flex: '1',
-    position: 'relative'
+    position: 'relative',
+    '@media (max-width: 768px)': {
+      height: '50%'
+    }
   },
   statusInfo: {
     marginTop: '12px',
     marginBottom: '16px'
   },
   errorBox: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)', // bg-red-500 with opacity
+    backgroundColor: '#fee2e2', // light red background
     padding: '12px',
-    borderRadius: '12px',
-    marginBottom: '16px'
+    borderRadius: '8px',
+    marginBottom: '16px',
+    border: '1px solid #fecaca'
   },
   errorTitle: {
     fontWeight: 'bold',
-    color: '#fca5a5' // text-red-300
+    color: '#ef4444' // flat red
   },
   errorText: {
-    color: '#fca5a5', // text-red-300
+    color: '#ef4444', // flat red
     fontSize: '14px'
   },
   statusBadgeActive: {
     display: 'inline-flex',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    backgroundColor: '#dcfce7', // light green
     padding: '6px 10px',
-    borderRadius: '9999px',
-    fontSize: '12px'
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#10b981' // green-500
   },
   statusBadgeInactive: {
     display: 'inline-flex',
     alignItems: 'center',
-    backgroundColor: 'rgba(107, 114, 128, 0.2)',
+    backgroundColor: '#f1f5f9', // light slate
     padding: '6px 10px',
-    borderRadius: '9999px',
-    fontSize: '12px'
+    borderRadius: '6px',
+    fontSize: '12px',
+    color: '#64748b' // slate-500
   },
   statusDotActive: {
-    color: '#10b981'
+    color: '#10b981' // green-500
   },
   statusDotInactive: {
-    color: '#6b7280'
+    color: '#64748b' // slate-500
   },
   statusDetail: {
     display: 'grid',
@@ -281,12 +292,12 @@ const styles = {
     fontSize: '14px'
   },
   statusLabel: {
-    color: '#93c5fd',
+    color: '#3b82f6', // flat blue
     marginBottom: '4px'
   },
   scrollbar: {
     scrollbarWidth: 'thin',
-    scrollbarColor: '#4b5563 #1f2937'
+    scrollbarColor: '#cbd5e1 #f1f5f9'
   }
 };
 
@@ -306,13 +317,13 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
   useEffect(() => {
     if (window.google && window.google.maps && window.google.maps.places) {
       try {
-        // Inisialisasi AutocompleteService sebagai instance
-        console.log('Menginisialisasi AutocompleteService');
+        // Simpan referensi ke API Places untuk digunakan nanti
+        autocompleteService.current = {
+          type: 'suggestion',
+          api: window.google.maps.places
+        };
         
-        // Simpan instance AutocompleteService untuk digunakan nanti
-        autocompleteService.current = new window.google.maps.places.AutocompleteService();
-        
-        console.log('Berhasil menginisialisasi Google Maps Places API dengan AutocompleteService');
+        console.log('Berhasil menginisialisasi Google Maps Places API');
       } catch (error) {
         console.error('Error saat inisialisasi Google Maps Places API:', error);
         autocompleteService.current = null;
@@ -363,31 +374,61 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
       setShowSuggestions(true);
       setIsLoading(true);
       
-      // Gunakan AutocompleteService untuk mendapatkan saran
+      // Gunakan AutocompleteSuggestion API untuk mendapatkan saran
       if (autocompleteService.current) {
-        // Buat options untuk API
+        // Buat options untuk API baru
         const searchOptions = {
           input: newValue,
+          locationRestriction: {
+            // Batasi ke Indonesia
+            rectangle: {
+              // Batas koordinat Indonesia (perkiraan)
+              low: { latitude: -11.0, longitude: 95.0 },
+              high: { latitude: 6.0, longitude: 141.0 }
+            }
+          },
           componentRestrictions: { country: 'id' } // Batasi ke Indonesia
         };
         
         // Gunakan timeout untuk menghindari terlalu banyak permintaan
         const timeoutId = setTimeout(() => {
-          // Menggunakan metode getPlacePredictions dengan callback
-          autocompleteService.current.getPlacePredictions(
-            searchOptions,
-            (predictions, status) => {
-              setIsLoading(false);
-              if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-                console.log('Suggestions received:', predictions);
-                setSuggestions(predictions);
-              } else {
-                console.log('No suggestions found or error:', status);
+          // Menggunakan AutocompleteSuggestion API yang baru
+          const autocompleteService = new window.google.maps.places.AutocompleteService();
+            autocompleteService.getPlacePredictions(searchOptions)
+              .then(response => {
+                setIsLoading(false);
+                if (response && response.predictions) {
+                  console.log('Suggestions received:', response.predictions);
+                  setSuggestions(response.predictions);
+                } else {
+                  setSuggestions([]);
+                }
+              })
+              .catch(error => {
+                setIsLoading(false);
+                console.error('Error saat mendapatkan saran lokasi:', error);
                 setSuggestions([]);
-              }
-            }
-          );
-        }, 300); // Delay 300ms untuk mengurangi jumlah permintaan
+              
+                try {
+                  if (window.google && window.google.maps && window.google.maps.places && window.google.maps.places.AutocompleteService) {
+                    const fallbackService = new window.google.maps.places.AutocompleteService();
+                    const fallbackOptions = {
+                      input: newValue,
+                      componentRestrictions: { country: 'id' }
+                    };
+                    
+                    fallbackService.getPlacePredictions(fallbackOptions, (predictions, status) => {
+                      if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
+                        console.log('Fallback suggestions received:', predictions);
+                        setSuggestions(predictions);
+                      }
+                    });
+                  }
+                } catch (fallbackError) {
+                  console.error('Fallback autocomplete juga gagal:', fallbackError);
+                }
+              });
+          }, 300); // Delay 300ms untuk mengurangi jumlah permintaan
         
         return () => clearTimeout(timeoutId);
       }
@@ -401,17 +442,25 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
 
   // Handler untuk pemilihan suggestion
   const handleSelectSuggestion = async (suggestion) => {
-    // Ekstrak deskripsi alamat dari suggestion
+    // Ekstrak deskripsi alamat dari suggestion berdasarkan format API baru
     let address = '';
     let placeId = '';
     
-    // Format dari AutocompleteService
-    if (suggestion.description) {
-      // Format standar dari AutocompleteService
+    // Prioritaskan format dari AutocompleteSuggestion API
+    if (suggestion.formattedText) {
+      // Format utama dari AutocompleteSuggestion API
+      address = suggestion.formattedText;
+      placeId = suggestion.placeId;
+    } else if (suggestion.primaryText && suggestion.secondaryText) {
+      // Format terpisah dari AutocompleteSuggestion API
+      address = `${suggestion.primaryText}, ${suggestion.secondaryText}`;
+      placeId = suggestion.placeId;
+    } else if (suggestion.description) {
+      // Format lama dari AutocompleteService (untuk kompatibilitas)
       address = suggestion.description;
       placeId = suggestion.place_id;
     } else if (suggestion.structured_formatting) {
-      // Format alternatif dengan structured_formatting
+      // Format alternatif dari AutocompleteService (untuk kompatibilitas)
       const { main_text, secondary_text } = suggestion.structured_formatting;
       address = secondary_text ? `${main_text}, ${secondary_text}` : main_text;
       placeId = suggestion.place_id;
@@ -424,28 +473,34 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
     setIsLoading(true);
     
     try {
-      // Definisikan fungsi fallback geocoding
-      const fallbackGeocoding = async () => {
+      // Jika kita memiliki placeId, gunakan Place API untuk mendapatkan detail lokasi
+      if (placeId && autocompleteService.current) {
         try {
-          console.log('Menggunakan fallback geocoding dengan getGeocode');
-          const results = await getGeocode({ address });
-          const { lat, lng } = await getLatLng(results[0]);
-          console.log('Berhasil mendapatkan lokasi dengan getGeocode:', lat, lng);
-          
-          // Panggil callback onSelect dengan alamat dan posisi
-          onSelect && onSelect({
-            address,
-            position: [lat, lng]
+          console.log('Mencoba mendapatkan lokasi dengan Place API baru');
+          // Gunakan fetchPlace dari API baru untuk mendapatkan detail lokasi
+          const placeResult = await autocompleteService.current.api.Place.fetchPlace({
+            id: placeId,
+            fields: ['location']
           });
-        } catch (geocodeError) {
-          console.error('Error saat geocoding:', geocodeError);
-        } finally {
-          setIsLoading(false);
+          
+          if (placeResult && placeResult.place && placeResult.place.location) {
+            const location = placeResult.place.location;
+            console.log('Berhasil mendapatkan lokasi dengan Place API baru:', location);
+            
+            // Panggil callback onSelect dengan alamat dan posisi
+            onSelect && onSelect({
+              address,
+              position: [location.latitude, location.longitude]
+            });
+            setIsLoading(false);
+            return;
+          }
+        } catch (placeError) {
+          console.warn('Error saat mengambil detail tempat dengan Place API baru:', placeError);
+          // Lanjutkan dengan metode fallback jika gagal
         }
-      };
-      
-      // Jika kita memiliki placeId, gunakan PlacesService untuk mendapatkan detail lokasi
-      if (placeId) {
+        
+        // Coba dengan PlacesService jika fetchPlace gagal
         try {
           console.log('Mencoba mendapatkan lokasi dengan PlacesService');
           // Buat PlacesService dengan dummy element
@@ -465,6 +520,7 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
                   position: [location.lat(), location.lng()]
                 });
                 setIsLoading(false);
+                return;
               } else {
                 console.warn('PlacesService gagal mendapatkan detail lokasi, status:', status);
                 // Lanjutkan dengan metode fallback
@@ -472,18 +528,35 @@ const PlacesAutocomplete = ({ placeholder, onSelect, value, onChange, style }) =
               }
             }
           );
+          return;
         } catch (placesServiceError) {
           console.warn('Error saat menggunakan PlacesService:', placesServiceError);
           // Lanjutkan dengan metode fallback
-          fallbackGeocoding();
         }
-        return;
       }
       
-      // Jalankan fallback geocoding jika tidak ada placeId
-      if (!placeId) {
-        await fallbackGeocoding();
-      }
+      // Fallback geocoding function
+      const fallbackGeocoding = async () => {
+        try {
+          console.log('Menggunakan fallback geocoding dengan getGeocode');
+          const results = await getGeocode({ address });
+          const { lat, lng } = await getLatLng(results[0]);
+          console.log('Berhasil mendapatkan lokasi dengan getGeocode:', lat, lng);
+          
+          // Panggil callback onSelect dengan alamat dan posisi
+          onSelect && onSelect({
+            address,
+            position: [lat, lng]
+          });
+        } catch (geocodeError) {
+          console.error('Error saat geocoding:', geocodeError);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      
+      // Jalankan fallback geocoding
+      await fallbackGeocoding();
     } catch (error) {
       console.error('Error saat memilih lokasi:', error);
       setIsLoading(false);
@@ -710,7 +783,7 @@ function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Add required CSS directly in a useEffect for proper map display
+  // Add required CSS directly in a useEffect for proper map display with responsive design
   useEffect(() => {
     // Add explicit Leaflet styles to ensure the map displays properly
     const style = document.createElement('style');
@@ -728,14 +801,32 @@ function App() {
         overflow: hidden;
       }
       .custom-scrollbar::-webkit-scrollbar {
-        width: 6px;
+        width: 4px;
       }
       .custom-scrollbar::-webkit-scrollbar-track {
-        background: #1f2937;
+        background: #f8fafc;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb {
-        background-color: #4b5563;
-        border-radius: 20px;
+        background-color: #cbd5e1;
+        border-radius: 4px;
+      }
+      .custom-div-icon {
+        transition: transform 0.2s ease;
+      }
+      .custom-div-icon:hover {
+        transform: scale(1.2);
+      }
+      
+      /* Responsive styles */
+      @media (max-width: 768px) {
+        .map-wrapper {
+          height: 50vh;
+        }
+        #root {
+          display: flex;
+          flex-direction: column;
+          height: 100vh;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -986,14 +1077,14 @@ function App() {
     if (startGate.name === endGate.name) return 0;
     
     // Extract locations from gates
-    // Variabel-variabel berikut tidak digunakan saat ini, dikomentari untuk menghindari peringatan ESLint
-    /*
     const startLat = startGate.latitude || startGate.lat || 0;
     const startLng = startGate.longitude || startGate.lng || 0;
     const endLat = endGate.latitude || endGate.lat || 0;
     const endLng = endGate.longitude || endGate.lng || 0;
     
     // Calculate distance between gates
+    // Variabel ini tidak digunakan saat ini, dikomentari untuk menghindari peringatan ESLint
+    /*
     const gateDistance = calculateDistance(
       [startLat, startLng], 
       [endLat, endLng]
@@ -1396,7 +1487,10 @@ function App() {
             
             {/* Dropdown jenis kendaraan */}
             <div className="mb-4">
-              <label htmlFor="vehicleClass" className="block text-sm font-medium text-gray-200 mb-1">Golongan Kendaraan (Tol)</label>
+            <div style={{...styles.sectionTitle, marginTop: '12px', marginBottom: '12px', fontSize: '16px'} } htmlFor="vehicleClass">
+              <MapPinned size={16} /> Golongan Kendaraan (Tol)
+            </div>
+              {/* <label htmlFor="vehicleClass" className="block text-sm font-medium text-blue-800 mb-1">Golongan Kendaraan (Tol)</label> */}
               <select
                 id="vehicleClass"
                 value={vehicleClass}
