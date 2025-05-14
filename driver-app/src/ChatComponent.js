@@ -179,7 +179,19 @@ const ChatComponent = ({ socket, driverId, connected }) => {
     const handleReceiveMessage = (data) => {
       // Only add messages for this driver
       if (data.to === driverId || data.from === driverId) {
-        setMessages(prev => [...prev, data]);
+        setMessages(prev => {
+          // Cek apakah pesan dengan timestamp yang sama sudah ada
+          const isDuplicate = prev.some(msg => 
+            msg.timestamp === data.timestamp && 
+            msg.from === data.from && 
+            msg.text === data.text
+          );
+          
+          // Jika duplikat, jangan tambahkan ke state
+          if (isDuplicate) return prev;
+          
+          return [...prev, data];
+        });
       }
     };
     
@@ -205,10 +217,18 @@ const ChatComponent = ({ socket, driverId, connected }) => {
       text: newMessage.trim(),
       from: driverId,
       to: 'monitor', // Tetapkan 'monitor' sebagai penerima pesan dari driver
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      id: `${driverId}-${Date.now()}` // Tambahkan ID unik untuk pesan
     };
     
-    socket.emit('sendMessage', messageData);
+    // Tambahkan pesan ke state terlebih dahulu untuk mencegah duplikasi
+    setMessages(prev => [...prev, messageData]);
+    
+    // Gunakan timeout kecil untuk menghindari race condition
+    setTimeout(() => {
+      socket.emit('sendMessage', messageData);
+    }, 10);
+    
     setNewMessage('');
   };
   

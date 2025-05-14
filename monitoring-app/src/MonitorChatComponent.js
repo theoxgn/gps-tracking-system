@@ -240,9 +240,28 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
     
     // Listener untuk pesan masuk
     const handleReceiveMessage = (data) => {
+      // Pastikan pesan tidak duplikat dengan mengecek timestamp dan konten
       setMessages(prev => {
         const driverId = data.from === 'monitor' ? data.to : data.from;
         const driverMessages = prev[driverId] || [];
+        
+        // Cek apakah pesan sudah ada (duplikat)
+        const isDuplicate = driverMessages.some(msg => 
+          msg.timestamp === data.timestamp && 
+          msg.text === data.text &&
+          msg.from === data.from
+        );
+        
+        // Jika duplikat, abaikan
+        if (isDuplicate) return prev;
+        
+        // Tampilkan chat panel jika mendapat pesan baru dari driver yang belum terbuka chatnya
+        if (!isOpen && data.from !== 'monitor') {
+          setIsOpen(true);
+          setMinimized(false);
+          setSelectedDriver(driverId);
+        }
+        
         return {
           ...prev,
           [driverId]: [...driverMessages, data]
@@ -272,24 +291,27 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
     
     // Mengambil riwayat chat untuk semua driver
     const fetchAllChatHistories = async () => {
-      const driverIds = Object.keys(drivers);
-      
-      for (const driverId of driverIds) {
-        // Request history untuk setiap driver
-        socket.emit('getChatHistory', { driverId }, (response) => {
-          if (response && response.messages) {
-            setMessages(prev => ({
-              ...prev,
-              [driverId]: response.messages
-            }));
+      // Penting: Pastikan mendapatkan semua driver, tidak hanya yang aktif
+      socket.emit('getAllDrivers', {}, (response) => {
+        if (response && response.drivers) {
+          const allDriverIds = response.drivers;
+          
+          for (const driverId of allDriverIds) {
+            // Request history untuk setiap driver
+            socket.emit('getChatHistory', { driverId }, (response) => {
+              if (response && response.messages && response.messages.length > 0) {
+                setMessages(prev => ({
+                  ...prev,
+                  [driverId]: response.messages
+                }));
+              }
+            });
           }
-        });
-      }
+        }
+      });
     };
     
-    if (Object.keys(drivers).length > 0) {
-      fetchAllChatHistories();
-    }
+    fetchAllChatHistories();
     
     return () => {
       socket.off('receiveMessage', handleReceiveMessage);
@@ -303,8 +325,17 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
       setSelectedDriver(activeDriver);
     } else if (Object.keys(drivers).length > 0 && !selectedDriver) {
       setSelectedDriver(Object.keys(drivers)[0]);
+    } else {
+      // Cari driver yang memiliki pesan meskipun tidak aktif
+      const driversWithMessages = Object.keys(messages).filter(driverId => 
+        messages[driverId] && messages[driverId].length > 0
+      );
+      
+      if (driversWithMessages.length > 0 && !selectedDriver) {
+        setSelectedDriver(driversWithMessages[0]);
+      }
     }
-  }, [activeDriver, drivers, selectedDriver]);
+  }, [activeDriver, drivers, selectedDriver, messages]);
   
   // Function untuk mengirim pesan
   const sendMessage = () => {
@@ -443,20 +474,31 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
           <div style={styles.chatContent}>
             {/* Daftar Driver */}
             <div style={styles.driverList} className="custom-scrollbar">
-              {Object.keys(drivers).length === 0 ? (
+              {/* Tampilkan semua driver yang memiliki pesan, termasuk yang tidak aktif */}
+              {Object.keys(messages).length === 0 ? (
                 <div style={{ padding: '12px', color: '#94a3b8', textAlign: 'center' }}>
                   Tidak ada driver aktif
                 </div>
               ) : (
-                Object.keys(drivers).map((driverId) => {
+                Object.keys(messages).map((driverId) => {
                   const unreadCount = getUnreadCountForDriver(driverId);
+                  const isActive = drivers[driverId] !== undefined;
+                  
+                  // Hanya tampilkan driver yang memiliki pesan
+                  if (messages[driverId]?.length === 0) return null;
+                  
                   return (
                     <div 
                       key={driverId}
-                      style={styles.driverItem(selectedDriver === driverId)}
+                      style={{
+                        ...styles.driverItem(selectedDriver === driverId),
+                        opacity: isActive ? 1 : 0.7,
+                      }}
                       onClick={() => selectDriver(driverId)}
                     >
-                      <div style={styles.driverName}>{driverId}</div>
+                      <div style={styles.driverName}>
+                        {driverId} {!isActive && '(offline)'}
+                      </div>
                       {unreadCount > 0 && (
                         <div style={styles.unreadBadge}>
                           {unreadCount > 9 ? '9+' : unreadCount}
@@ -464,7 +506,7 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
                       )}
                     </div>
                   );
-                })
+                }).filter(Boolean) // Filter null elements
               )}
             </div>
             
