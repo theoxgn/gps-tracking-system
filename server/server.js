@@ -606,6 +606,36 @@ io.on("connection", (socket) => {
       delete connectedClients.monitors[clientId];
     }
   });
+
+  // Handle client identification
+  socket.on("identify", (data) => {
+    console.log(`Client identified: ${socket.id} as ${data.type}`, data);
+    
+    if (data.type === CLIENT_TYPES.DRIVER) {
+      const driverId = data.driverId || socket.id;
+      // Update the registry with the correct driver ID
+      connectedClients.drivers[driverId] = socket.id;
+      console.log(`Driver registered: ${driverId}`);
+      
+      // Send any pending messages to this driver
+      if (chatHistory[driverId]) {
+        const unreadMessages = chatHistory[driverId].filter(msg => 
+          !msg.read && msg.to === driverId
+        );
+        if (unreadMessages.length > 0) {
+          console.log(`Sending ${unreadMessages.length} pending messages to driver ${driverId}`);
+          unreadMessages.forEach(msg => {
+            socket.emit("receiveMessage", msg);
+          });
+        }
+      }
+    } else if (data.type === CLIENT_TYPES.MONITOR) {
+      // For monitor, use a consistent ID or the socket ID
+      const monitorId = data.monitorId || 'monitor-' + socket.id;
+      connectedClients.monitors[monitorId] = socket.id;
+      console.log(`Monitor registered: ${monitorId}`);
+    }
+  });
 });
 
 // Clean up inactive drivers periodically
