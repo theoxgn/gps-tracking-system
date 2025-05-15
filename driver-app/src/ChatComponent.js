@@ -1,6 +1,6 @@
 // ChatComponent.js untuk aplikasi Driver
 import React, { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Send, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { MessageCircle, Send, X, ChevronDown } from 'lucide-react';
 
 // Komponen chat untuk aplikasi driver
 const ChatComponent = ({ socket, driverId, connected }) => {
