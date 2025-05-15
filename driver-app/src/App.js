@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { LoadScript } from '@react-google-maps/api';
-import axios from "axios";
 import ChatComponent from './ChatComponent';
 
 // Import icons
@@ -62,9 +61,7 @@ function App() {
   
   // State untuk rute detail
   const [routeInstructions, setRouteInstructions] = useState([]);
-  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [transportMode, setTransportMode] = useState('driving-car');
-  const [showRouteInstructions, setShowRouteInstructions] = useState(false);
   
   // State untuk UI
   const [buttonHover, setButtonHover] = useState(false);
@@ -116,7 +113,8 @@ function App() {
         socketInstance.disconnect();
       }
     };
-  }, []); // Empty dependency array to run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [driverId]); 
 
   /**
    * Update driver ID when it changes
@@ -281,7 +279,6 @@ function App() {
       setRouteDistance(distance);
       setRouteDuration(durationMinutes);
       setRouteInstructions(instructions);
-      setShowRouteInstructions(true);
       
     } catch (error) {
       console.error('Error calculating route info:', error);
@@ -296,7 +293,6 @@ function App() {
       
       // Reset other state to avoid stale data
       setRouteInstructions([]);
-      setShowRouteInstructions(false);
     } finally {
       // Always reset calculation flag when done
       isCalculatingRoute.current = false;
@@ -310,9 +306,6 @@ function App() {
   const handleRouteCalculated = (routeData) => {
     if (!routeData) return;
     
-    // Track if any updates are needed
-    let needsUpdate = false;
-    
     // Store previous values to check if they've actually changed
     const prevDistance = routeDistance;
     const prevDuration = routeDuration;
@@ -320,12 +313,10 @@ function App() {
     // Only update if values are different to avoid needless re-renders
     if (routeData.distance !== prevDistance) {
       setRouteDistance(routeData.distance);
-      needsUpdate = true;
     }
     
     if (routeData.duration !== prevDuration) {
       setRouteDuration(routeData.duration);
-      needsUpdate = true;
     }
     
     // For instructions, we need to check if they're significantly different
@@ -334,13 +325,6 @@ function App() {
         (!routeInstructions || 
          routeInstructions.length !== routeData.instructions.length)) {
       setRouteInstructions(routeData.instructions);
-      
-      // Only set this to true if we actually have instructions
-      if (routeData.instructions.length > 0) {
-        setShowRouteInstructions(true);
-      }
-      
-      needsUpdate = true;
     }
   };
 
@@ -491,7 +475,6 @@ function App() {
     setRouteDistance(null);
     setRouteDuration(null);
     setRouteInstructions([]);
-    setShowRouteInstructions(false);
     
     // Reset route calculation state
     prevRouteRef.current = {
