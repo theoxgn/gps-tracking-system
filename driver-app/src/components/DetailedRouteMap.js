@@ -178,10 +178,9 @@ const DetailedRouteMap = ({
     return (
       <Polyline
         positions={[startPoint, endPoint]}
-        color="#3b82f6"
+        color="black"
         weight={4}
         opacity={0.7}
-        dashArray="10, 10"
       />
     );
   }
@@ -190,7 +189,7 @@ const DetailedRouteMap = ({
   return (
     <Polyline
       positions={routeGeometry}
-      color="#3b82f6"
+      color="black"
       weight={5}
       opacity={0.7}
     />

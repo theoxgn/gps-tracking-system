@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Polyline, useMap } from 'react-leaflet';
+import { Polyline, useMap, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { getOsrmRoute, transportModeToProfile, getDirectRoute } from '../services/osrmRouteService';
 
@@ -107,6 +107,31 @@ const MonitorRouteMap = ({
     };
   }, [startPoint, endPoint, transportMode, map, fitRoute, routeData, useOsrm]);
   
+  // Create custom marker icons for start and end points
+  const startIcon = L.divIcon({
+    className: 'custom-div-icon',
+    html: `
+      <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 0C5.37 0 0 5.37 0 12C0 20.25 12 36 12 36C12 36 24 20.25 24 12C24 5.37 18.63 0 12 0ZM12 16.5C9.51 16.5 7.5 14.49 7.5 12C7.5 9.51 9.51 7.5 12 7.5C14.49 7.5 16.5 9.51 16.5 12C16.5 14.49 14.49 16.5 12 16.5Z" fill="#10b981"/>
+      </svg>
+    `,
+    iconSize: [24, 36],
+    iconAnchor: [12, 36],
+    popupAnchor: [0, -36]
+  });
+  
+  const endIcon = L.divIcon({
+    className: 'custom-div-icon',
+    html: `
+      <svg width="24" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 0C5.37 0 0 5.37 0 12C0 20.25 12 36 12 36C12 36 24 20.25 24 12C24 5.37 18.63 0 12 0ZM12 16.5C9.51 16.5 7.5 14.49 7.5 12C7.5 9.51 9.51 7.5 12 7.5C14.49 7.5 16.5 9.51 16.5 12C16.5 14.49 14.49 16.5 12 16.5Z" fill="#ef4444"/>
+      </svg>
+    `,
+    iconSize: [24, 36],
+    iconAnchor: [12, 36],
+    popupAnchor: [0, -36]
+  });
+  
   // If no route geometry, don't render anything
   if (routeGeometry.length === 0) {
     return null;
@@ -118,10 +143,40 @@ const MonitorRouteMap = ({
       {/* Main route line */}
       <Polyline
         positions={routeGeometry}
-        color="#3b82f6"
+        color="black"
         weight={5}
         opacity={0.7}
       />
+      
+      {/* Start point marker */}
+      {startPoint && Array.isArray(startPoint) && startPoint.length === 2 && (
+        <Marker 
+          position={startPoint}
+          icon={startIcon}
+        >
+          <Popup>
+            <div className="text-center">
+              <div className="font-bold text-green-600">Starting Point</div>
+              <div className="text-sm mt-1">{startPoint[0].toFixed(6)}, {startPoint[1].toFixed(6)}</div>
+            </div>
+          </Popup>
+        </Marker>
+      )}
+      
+      {/* End point marker */}
+      {endPoint && Array.isArray(endPoint) && endPoint.length === 2 && (
+        <Marker 
+          position={endPoint}
+          icon={endIcon}
+        >
+          <Popup>
+            <div className="text-center">
+              <div className="font-bold text-red-600">Destination</div>
+              <div className="text-sm mt-1">{endPoint[0].toFixed(6)}, {endPoint[1].toFixed(6)}</div>
+            </div>
+          </Popup>
+        </Marker>
+      )}
       
       {/* Direction arrow markers along the route */}
       <RouteDirectionMarkers positions={routeGeometry} />
