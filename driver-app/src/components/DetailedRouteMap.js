@@ -3,7 +3,6 @@ import { useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import axios from 'axios';
 
-
 /**
  * Komponen untuk menampilkan rute lengkap di peta menggunakan OSRM
  * @param {Object} props - Component props
@@ -19,7 +18,6 @@ const DetailedRouteMap = ({
   onRouteCalculated = null
 }) => {
   // State untuk menyimpan rute
-  const [routeData, setRouteData] = useState(null);
   const [routeGeometry, setRouteGeometry] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -35,7 +33,7 @@ const DetailedRouteMap = ({
   const fetchRoute = async (start, end, mode) => {
     if (!start || !end) return;
     
-    // Skip jika tidak ada perubahan
+    // Skip jika tidak ada perubahan input
     const propsChanged = 
       !prevPropsRef.current.startPoint ||
       !prevPropsRef.current.endPoint ||
@@ -44,13 +42,19 @@ const DetailedRouteMap = ({
       prevPropsRef.current.endPoint[0] !== end[0] ||
       prevPropsRef.current.endPoint[1] !== end[1] ||
       prevPropsRef.current.transportMode !== mode;
-      
+    
     if (!propsChanged && routeCalculatedRef.current) {
+      console.log('Skipping route calculation - inputs unchanged');
       return;
     }
     
     // Perbarui ref
-    prevPropsRef.current = { startPoint: start, endPoint: end, transportMode: mode };
+    prevPropsRef.current = { 
+      startPoint: start ? [...start] : null, 
+      endPoint: end ? [...end] : null, 
+      transportMode: mode 
+    };
+    
     setIsLoading(true);
     setError(null);
     
@@ -88,14 +92,19 @@ const DetailedRouteMap = ({
         const geometry = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
         
         setRouteGeometry(geometry);
-        setRouteData(route);
         routeCalculatedRef.current = true;
         
-        // Sesuaikan peta untuk menampilkan seluruh rute
-        if (geometry.length > 0) {
-          const bounds = L.latLngBounds(geometry);
-          map.fitBounds(bounds, { padding: [50, 50] });
-        }
+        // Sesuaikan peta untuk menampilkan seluruh rute - delay untuk memastikan DOM diperbarui
+        setTimeout(() => {
+          if (geometry.length > 0 && map) {
+            try {
+              const bounds = L.latLngBounds(geometry);
+              map.fitBounds(bounds, { padding: [50, 50] });
+            } catch (e) {
+              console.error('Error fitting bounds:', e);
+            }
+          }
+        }, 100);
         
         // Generate instruksi rute dari steps
         const instructions = extractRouteInstructions(route);
@@ -141,37 +150,38 @@ const DetailedRouteMap = ({
 
   // Jalankan fetchRoute saat komponen mount atau props berubah
   useEffect(() => {
-    if (startPoint && endPoint) {
-      fetchRoute(startPoint, endPoint, transportMode);
-    } else {
-      // Reset route jika tidak ada titik awal/akhir
-      setRouteGeometry([]);
-      setRouteData(null);
-      routeCalculatedRef.current = false;
+    // Periksa validasi input
+    if (!startPoint || !endPoint || !Array.isArray(startPoint) || !Array.isArray(endPoint)) {
+      console.log('Invalid route points', { startPoint, endPoint });
+      return;
     }
-  }, [startPoint, endPoint, transportMode]);
-
-  // Event listener untuk resize peta ketika rute berubah
-  useEffect(() => {
-    if (routeGeometry.length > 0) {
-      const bounds = L.latLngBounds(routeGeometry);
-      map.invalidateSize(); // Make sure map is properly sized
-      map.fitBounds(bounds, { padding: [50, 50] });
+    
+    // Periksa DOM dan peta telah dimuat sepenuhnya
+    if (!map) {
+      console.log('Map not ready yet');
+      return;
     }
-  }, [routeGeometry, map]);
+    
+    // Ambil rute
+    fetchRoute(startPoint, endPoint, transportMode);
+  }, [startPoint, endPoint, transportMode, map]);
 
-  // Jika tidak ada titik atau geometri, jangan render apa-apa
-  if (!startPoint || !endPoint || routeGeometry.length === 0) {
-    // Render polyline sederhana
-    return startPoint && endPoint ? (
-      <Polyline 
-        positions={[startPoint, endPoint]} 
-        color="#3b82f6" 
-        weight={4} 
+  // Jika tidak ada titik, jangan render apa-apa
+  if (!startPoint || !endPoint) {
+    return null;
+  }
+  
+  // Jika rute belum dihitung, tampilkan garis langsung antara titik
+  if (routeGeometry.length === 0) {
+    return (
+      <Polyline
+        positions={[startPoint, endPoint]}
+        color="#3b82f6"
+        weight={4}
         opacity={0.7}
         dashArray="10, 10"
       />
-    ) : null;
+    );
   }
   
   // Render polyline berdasarkan geometri rute
