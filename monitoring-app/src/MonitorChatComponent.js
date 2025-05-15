@@ -42,7 +42,7 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
       position: 'absolute',
       bottom: minimized ? '80px' : '16px',
       right: '16px',
-      width: '360px',
+      width: '520px',
       height: minimized ? '60px' : '500px',
       backgroundColor: 'white',
       borderRadius: '12px',
