@@ -194,8 +194,7 @@ const Sidebar = ({
   autoCenter, 
   onDriverSelect, 
   onToggleAutoCenter, 
-  driverRoutes,
-  updateDriverRoute  // Changed from setDriverRoutes to updateDriverRoute
+  driverRoutes
 }) => {
   return (
     <div style={{ width: '320px' }} className="bg-white text-slate-700 flex flex-col shadow-lg border-r border-slate-200 overflow-hidden">
@@ -239,56 +238,17 @@ const Sidebar = ({
               <div>{driverRoutes[activeDriver].duration || '?'} minutes</div>
             </div>
             <div className="col-span-2">
-              <div className="text-blue-500 font-medium">From</div>
-              <div className="truncate">{driverRoutes[activeDriver].startPoint[0].toFixed(6)}, {driverRoutes[activeDriver].startPoint[1].toFixed(6)}</div>
-            </div>
-            <div className="col-span-2">
-              <div className="text-blue-500 font-medium">To</div>
-              <div className="truncate">{driverRoutes[activeDriver].endPoint[0].toFixed(6)}, {driverRoutes[activeDriver].endPoint[1].toFixed(6)}</div>
+              <div className="text-blue-500 font-medium">Route Status</div>
+              <div>
+                {Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
+                 driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
+                  <span className="text-green-600">✓ Active route with {driverRoutes[activeDriver].routeGeometry.length} points</span>
+                ) : (
+                  <span className="text-yellow-600">⚠ Simple route line</span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      
-      {/* Test button to create route manually */}
-      {activeDriver && (
-        <div className="mt-3 px-4 pb-4">
-          <button
-            className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg shadow text-sm"
-            onClick={() => {
-              if (!drivers[activeDriver]) return;
-              
-              console.log('Creating test route for driver:', activeDriver);
-              
-              // Get driver's position
-              const pos = drivers[activeDriver].position;
-              
-              // Create test route - simple path with a few points
-              const testRoute = {
-                deviceID: activeDriver,
-                startPoint: pos,
-                endPoint: [pos[0] + 0.01, pos[1] + 0.01], // ~1km northeast
-                routeGeometry: [
-                  pos,
-                  [pos[0] + 0.002, pos[1] + 0.003],
-                  [pos[0] + 0.005, pos[1] + 0.006],
-                  [pos[0] + 0.008, pos[1] + 0.009],
-                  [pos[0] + 0.01, pos[1] + 0.01]
-                ],
-                distance: 1.5,
-                duration: 5,
-                timestamp: Date.now()
-              };
-              
-              // Log the test route
-              console.log('Test route data:', testRoute);
-              
-              // Update the driver route
-              updateDriverRoute(activeDriver, testRoute);
-            }}
-          >
-            Test Route Display
-          </button>
         </div>
       )}
       
@@ -331,7 +291,6 @@ const MapController = ({ activeDriver, drivers, autoCenter }) => {
   
   // Force map to redraw when component mounts
   useEffect(() => {
-    console.log("MapController mounted, invalidating map size");
     setTimeout(() => {
       map.invalidateSize();
     }, 100);
@@ -340,8 +299,6 @@ const MapController = ({ activeDriver, drivers, autoCenter }) => {
   // Update view when active driver changes or when drivers update
   useEffect(() => {
     if (!map) return;
-
-    console.log("Updating map view", { activeDriver, driversCount: Object.keys(drivers).length });
     
     try {
       // Force map to redraw first
@@ -350,7 +307,6 @@ const MapController = ({ activeDriver, drivers, autoCenter }) => {
       if (autoCenter) {
         if (activeDriver && drivers[activeDriver]) {
           const [lat, lng] = drivers[activeDriver].position;
-          console.log(`Centering on active driver: ${activeDriver} at ${lat},${lng}`);
           map.setView([lat, lng], 15);
         } else if (Object.keys(drivers).length > 0) {
           // Calculate bounds for all drivers
@@ -358,12 +314,10 @@ const MapController = ({ activeDriver, drivers, autoCenter }) => {
           if (positions.length > 0) {
             if (positions.length === 1) {
               // If only one driver, just center on them
-              console.log(`Centering on single driver at ${positions[0]}`);
               map.setView(positions[0], 13);
             } else {
               // Create bounds and fit the map to them
               try {
-                console.log(`Fitting bounds for ${positions.length} drivers`);
                 const bounds = L.latLngBounds(positions);
                 map.fitBounds(bounds, { padding: [50, 50] });
               } catch (e) {
@@ -412,7 +366,6 @@ const useDrivers = () => {
     });
     
     socketInstance.on('driverData', (data) => {
-      console.log('Received driver data:', data);
       setDrivers(prevDrivers => {
         const newDrivers = { ...prevDrivers };
         
@@ -433,27 +386,14 @@ const useDrivers = () => {
       });
     });
     
-    // Add a specific debug listener for route updates
+    // Handle route updates
     socketInstance.on('driverRouteUpdate', (routeData) => {
       if (!routeData || !routeData.deviceID) {
-        console.warn('Received invalid route data:', routeData);
         return;
       }
       
-      console.log('✅ Received route update for driver:', routeData.deviceID);
-      console.log('Route details:', {
-        hasGeometry: Boolean(routeData.routeGeometry),
-        geometryType: routeData.routeGeometry ? typeof routeData.routeGeometry : 'N/A',
-        geometryLength: Array.isArray(routeData.routeGeometry) ? routeData.routeGeometry.length : 'N/A',
-        startPoint: routeData.startPoint,
-        endPoint: routeData.endPoint,
-        distance: routeData.distance,
-        duration: routeData.duration
-      });
-      
       // Ensure routeGeometry is an array even if it's missing
       if (!routeData.routeGeometry || !Array.isArray(routeData.routeGeometry)) {
-        console.warn('Invalid routeGeometry, using fallback straight line');
         if (routeData.startPoint && routeData.endPoint) {
           routeData.routeGeometry = [routeData.startPoint, routeData.endPoint];
         } else {
@@ -466,15 +406,6 @@ const useDrivers = () => {
         [routeData.deviceID]: routeData
       }));
     });
-    
-    // Add a debug listener for when route requests are sent
-    const originalEmit = socketInstance.emit;
-    socketInstance.emit = function(eventName, ...args) {
-      if (eventName === 'requestDriverRoute') {
-        console.log('🔍 Requesting route for driver:', args[0]?.driverId);
-      }
-      return originalEmit.apply(this, [eventName, ...args]);
-    };
     
     setSocket(socketInstance);
     
@@ -514,17 +445,9 @@ function App() {
   // Effect to request route data when selecting a driver
   useEffect(() => {
     if (socket && activeDriver) {
-      console.log('Requesting route for driver:', activeDriver);
       socket.emit('requestDriverRoute', { driverId: activeDriver });
-      
-      // Add debug log to check if route data exists
-      if (driverRoutes[activeDriver]) {
-        console.log('Current route data for this driver:', driverRoutes[activeDriver]);
-      } else {
-        console.log('No route data available for this driver yet');
-      }
     }
-  }, [activeDriver, socket, driverRoutes]);
+  }, [activeDriver, socket]);
 
   // Select a driver to focus on
   const handleDriverSelect = (driverId) => {
@@ -535,16 +458,6 @@ function App() {
   // Toggle auto-center functionality
   const handleToggleAutoCenter = () => {
     setAutoCenter(!autoCenter);
-  };
-  
-  // Function to manually update a driver's route (for testing)
-  const updateDriverRoute = (driverId, routeData) => {
-    console.log('Updating route for driver:', driverId);
-    
-    setDriverRoutes(prev => ({
-      ...prev,
-      [driverId]: routeData
-    }));
   };
 
   return (
@@ -558,7 +471,6 @@ function App() {
         onDriverSelect={handleDriverSelect}
         onToggleAutoCenter={handleToggleAutoCenter}
         driverRoutes={driverRoutes}
-        updateDriverRoute={updateDriverRoute}
       />
       
       {/* Map */}
@@ -590,56 +502,31 @@ function App() {
             />
           ))}
           
-          {/* Direct test route for debugging */}
-          {activeDriver && drivers[activeDriver] && (
-            <Polyline
-              positions={[
-                drivers[activeDriver].position,
-                [
-                  drivers[activeDriver].position[0] + 0.01, 
-                  drivers[activeDriver].position[1] + 0.01
-                ]
-              ]}
-              color="red"
-              weight={5}
-              opacity={0.7}
-              dashArray="5, 5"
-            />
-          )}
-          
-          {/* Display selected driver's route with better validation */}
+          {/* Display selected driver's route with proper validation */}
           {activeDriver && driverRoutes[activeDriver] && (
-            <>
-              {console.log('Rendering route for', activeDriver, 
-                `geometry points: ${Array.isArray(driverRoutes[activeDriver].routeGeometry) ? 
-                  driverRoutes[activeDriver].routeGeometry.length : 'not an array'}`
-              )}
-              
-              {/* Only try to render if we have valid route data */}
-              {Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
-              driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
-                <MonitorRouteMap
-                  routeData={driverRoutes[activeDriver].routeGeometry}
-                  startPoint={driverRoutes[activeDriver].startPoint}
-                  endPoint={driverRoutes[activeDriver].endPoint}
-                  fitRoute={true}
+            Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
+            driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
+              <MonitorRouteMap
+                routeData={driverRoutes[activeDriver].routeGeometry}
+                startPoint={driverRoutes[activeDriver].startPoint}
+                endPoint={driverRoutes[activeDriver].endPoint}
+                fitRoute={true}
+              />
+            ) : (
+              // If we don't have valid route data but have start/end points, render a simple line
+              driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint ? (
+                <Polyline
+                  positions={[
+                    driverRoutes[activeDriver].startPoint,
+                    driverRoutes[activeDriver].endPoint
+                  ]}
+                  color="#3b82f6"
+                  weight={4}
+                  opacity={0.7}
+                  dashArray="10, 10"
                 />
-              ) : (
-                // If we don't have valid route data but have start/end points, render a simple line
-                driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint ? (
-                  <Polyline
-                    positions={[
-                      driverRoutes[activeDriver].startPoint,
-                      driverRoutes[activeDriver].endPoint
-                    ]}
-                    color="#3b82f6"
-                    weight={4}
-                    opacity={0.7}
-                    dashArray="10, 10"
-                  />
-                ) : null
-              )}
-            </>
+              ) : null
+            )
           )}
           
           <MapController 
