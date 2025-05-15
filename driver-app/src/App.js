@@ -27,7 +27,8 @@ import {
 import { styles } from './styles';
 import PlacesAutocomplete from './components/PlacesAutocomplete';
 import { createCustomIcon, calculateDistance } from './utils/mapUtils';
-import { RouteLine, MapController } from './components/MapComponents';
+import { MapController } from './components/MapComponents';
+import DetailedRouteMap from './components/DetailedRouteMap';
 
 // Constants
 const SERVER_URL = process.env.REACT_APP_API_URL;
@@ -71,6 +72,12 @@ function App() {
   const [routeDuration, setRouteDuration] = useState(null);
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
   
+  // State untuk rute detail
+  const [routeInstructions, setRouteInstructions] = useState([]);
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+  const [transportMode, setTransportMode] = useState('driving-car');
+  const [showRouteInstructions, setShowRouteInstructions] = useState(false);
+  
   // Toll and vehicle state
   const [vehicleClass, setVehicleClass] = useState('gol1'); // default golongan tol
   const [nearestStartTollGate, setNearestStartTollGate] = useState(null);
@@ -79,11 +86,34 @@ function App() {
   const [useToll, setUseToll] = useState(true);
   const [tollGates, setTollGates] = useState([]);
   const [buttonHover, setButtonHover] = useState(false);
+  
+  // Refs to track previous values and prevent unnecessary recalculations
+  const prevRouteRef = useRef({
+    startPoint: null,
+    endPoint: null,
+    transportMode: null,
+    useToll: true,
+    vehicleClass: 'gol1'
+  });
+  
+  // Ref to track if route calculation is in progress
+  const isCalculatingRoute = useRef(false);
+  
+  // Ref for tracking map initialization
+  const mapInitialized = useRef(false);
+  
+  // Ref for tracking if toll data has been fetched
+  const tollDataFetched = useRef(false);
 
   /**
-   * Initialize socket connection
+   * Initialize socket connection - FIXED
+   * Only create socket once and handle reconnections properly
    */
   useEffect(() => {
+    // If socket already exists, don't create another one
+    if (socket) return;
+    
+    console.log('Initializing socket connection to:', SERVER_URL);
     const socketInstance = io(SERVER_URL);
     
     socketInstance.on('connect', () => {
@@ -105,84 +135,120 @@ function App() {
     setSocket(socketInstance);
     
     return () => {
-      if (socketInstance) socketInstance.disconnect();
+      console.log('Cleaning up socket connection');
+      if (socketInstance) {
+        socketInstance.disconnect();
+      }
     };
-  }, [driverId]);
+  }, []); // Empty dependency array to run only once on mount
 
   /**
-   * Force map resize when component mounts
+   * Update driver ID when it changes - FIXED
+   * Separate effect that only runs when driverId changes
    */
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (mapRef.current) {
-        mapRef.current.invalidateSize();
-      }
-    }, 500);
-    
-    return () => clearTimeout(timer);
-  }, []);
+    if (socket && connected) {
+      console.log('Re-identifying with new driver ID:', driverId);
+      socket.emit('identify', {
+        type: 'driver',
+        driverId: driverId
+      });
+    }
+  }, [driverId, connected, socket]);
 
   /**
-   * Add required CSS for map display
+   * Force map resize when component mounts - FIXED
+   * Uses ref to prevent multiple executions
    */
   useEffect(() => {
-    const style = document.createElement('style');
-    style.innerHTML = `
-      .leaflet-container {
-        width: 100% !important;
-        height: 100% !important;
-        z-index: 1;
-      }
-      .map-wrapper {
-        position: relative;
-        flex-grow: 1;
-        height: 100vh;
-        width: 100%;
-        overflow: hidden;
-      }
-      .custom-scrollbar::-webkit-scrollbar {
-        width: 4px;
-      }
-      .custom-scrollbar::-webkit-scrollbar-track {
-        background: #f8fafc;
-      }
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background-color: #cbd5e1;
-        border-radius: 4px;
-      }
-      .custom-div-icon {
-        transition: transform 0.2s ease;
-      }
-      .custom-div-icon:hover {
-        transform: scale(1.2);
-      }
+    if (!mapInitialized.current) {
+      const timer = setTimeout(() => {
+        if (mapRef.current) {
+          console.log('Invalidating map size');
+          mapRef.current.invalidateSize();
+          mapInitialized.current = true;
+        }
+      }, 500);
       
-      /* Responsive styles */
-      @media (max-width: 768px) {
-        .map-wrapper {
-          height: 50vh;
-        }
-        #root {
-          display: flex;
-          flex-direction: column;
-          height: 100vh;
-        }
-      }
-    `;
-    document.head.appendChild(style);
-    
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
+      return () => clearTimeout(timer);
+    }
+  }, []); // Empty dependency array to run only once
 
   /**
-   * Fetch toll gates data from API
+   * Add required CSS for map display - FIXED
+   * Only runs once on mount
+   */
+  useEffect(() => {
+    const styleId = 'leaflet-custom-styles';
+    
+    // Only add style element if it doesn't already exist
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.innerHTML = `
+        .leaflet-container {
+          width: 100% !important;
+          height: 100% !important;
+          z-index: 1;
+        }
+        .map-wrapper {
+          position: relative;
+          flex-grow: 1;
+          height: 100vh;
+          width: 100%;
+          overflow: hidden;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f8fafc;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background-color: #cbd5e1;
+          border-radius: 4px;
+        }
+        .custom-div-icon {
+          transition: transform 0.2s ease;
+        }
+        .custom-div-icon:hover {
+          transform: scale(1.2);
+        }
+        
+        /* Responsive styles */
+        @media (max-width: 768px) {
+          .map-wrapper {
+            height: 50vh;
+          }
+          #root {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+      
+      return () => {
+        if (document.getElementById(styleId)) {
+          document.head.removeChild(document.getElementById(styleId));
+        }
+      };
+    }
+  }, []); // Empty dependency array to run only once
+
+  /**
+   * Fetch toll gates data from API - FIXED
+   * Added flag to prevent multiple fetches
    */
   useEffect(() => {
     const fetchTollGates = async () => {
+      // Only fetch once
+      if (tollDataFetched.current) return;
+      
       try {
         console.log('Fetching toll gates data...');
+        tollDataFetched.current = true;
         
         // Try primary endpoint first
         try {
@@ -213,8 +279,11 @@ function App() {
       } catch (err) {
         console.error('Completely failed to get toll gates data:', err);
         setTollGates([]);
+        // Reset fetched flag on complete failure to allow retry
+        tollDataFetched.current = false;
       }
     };
+    
     fetchTollGates();
   }, []);
 
@@ -255,75 +324,241 @@ function App() {
 
   /**
    * Estimate toll cost based on gates and vehicle class
+   * FIXED: Added memoization to prevent duplicate API calls
    */
-  const estimateTollCost = (startGate, endGate, vehicleClass) => {
+  const estimateTollCost = async (startGate, endGate, vehicleClass) => {
     if (!startGate || !endGate) return null;
     
     // Check if gates are the same (no toll fee)
     if (startGate.name === endGate.name) return 0;
     
-    // Call the API to get the toll cost
-    return axios.get(`${process.env.REACT_APP_API_URL}/api/calculate-toll`, {
-      params: {
-        startGate: startGate.name,
-        endGate: endGate.name,
-        vehicleType: vehicleClass
-      },
-      headers: {
-        'x-api-key': process.env.REACT_APP_API_KEY || '',
-        'Content-Type': 'application/json'
-      }
-    })
-    .then(response => {
+    // Create a cache key for this specific request
+    const cacheKey = `${startGate.name}-${endGate.name}-${vehicleClass}`;
+    
+    // Initialize toll cost cache if it doesn't exist
+    if (!window.tollCostCache) {
+      window.tollCostCache = {};
+    }
+    
+    // Check if we have a cached result
+    const cachedCost = window.tollCostCache[cacheKey];
+    if (cachedCost !== undefined) {
+      console.log('Using cached toll cost for', cacheKey, ':', cachedCost);
+      return cachedCost;
+    }
+    
+    try {
+      // Call the API to get the toll cost
+      const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/calculate-toll`, {
+        params: {
+          startGate: startGate.name,
+          endGate: endGate.name,
+          vehicleType: vehicleClass
+        },
+        headers: {
+          'x-api-key': process.env.REACT_APP_API_KEY || '',
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      let tollCost = null;
       if (response.data && typeof response.data.cost === 'number') {
-        return response.data.cost;
+        tollCost = response.data.cost;
+        // Cache the result for future use
+        window.tollCostCache[cacheKey] = tollCost;
       }
-      return null;
-    })
-    .catch(error => {
+      
+      return tollCost;
+    } catch (error) {
       console.error('Failed to calculate toll cost:', error);
       return null;
-    });
+    }
   };
 
   /**
    * Calculate route information (distance, duration, toll)
+   * FIXED: Completely restructured to avoid infinite loops
    */
   const calculateRouteInfo = async (start, end) => {
+    // Prevent concurrent calculations and check if inputs are valid
+    if (isCalculatingRoute.current || !start || !end) {
+      return;
+    }
+    
     console.log('Calculating route info between:', start, 'and', end);
     
-    // Calculate distance in kilometers using Haversine formula
-    const distance = calculateDistance(start, end);
-    setRouteDistance(distance);
-    console.log('Route distance:', distance.toFixed(2), 'km');
+    // Skip recalculation if inputs haven't changed
+    const inputsChanged = 
+      !prevRouteRef.current.startPoint || 
+      !prevRouteRef.current.endPoint ||
+      prevRouteRef.current.startPoint[0] !== start[0] ||
+      prevRouteRef.current.startPoint[1] !== start[1] ||
+      prevRouteRef.current.endPoint[0] !== end[0] ||
+      prevRouteRef.current.endPoint[1] !== end[1] ||
+      prevRouteRef.current.transportMode !== transportMode ||
+      prevRouteRef.current.useToll !== useToll ||
+      prevRouteRef.current.vehicleClass !== vehicleClass;
+      
+    if (!inputsChanged) {
+      console.log('Skipping route calculation - inputs unchanged');
+      return;
+    }
     
-    // Estimate duration based on average speed (50 km/h)
-    const avgSpeedKmh = 50;
-    const durationHours = distance / avgSpeedKmh;
-    const durationMinutes = Math.round(durationHours * 60);
-    setRouteDuration(durationMinutes);
-    console.log('Estimated duration:', durationMinutes, 'minutes');
+    // Set calculation flag to prevent concurrent calculations
+    isCalculatingRoute.current = true;
     
-    // Find nearest toll gates to start and end points
-    console.log('Finding nearest toll gates...');
-    const startTollGate = findNearestTollGate(start);
-    const endTollGate = findNearestTollGate(end);
+    // Update prev values
+    prevRouteRef.current = {
+      startPoint: [...start],
+      endPoint: [...end],
+      transportMode,
+      useToll,
+      vehicleClass
+    };
     
-    setNearestStartTollGate(startTollGate);
-    setNearestEndTollGate(endTollGate);
-    
-    // Calculate toll cost if toll is enabled and gates are found
-    if (useToll && startTollGate && endTollGate) {
-      console.log('Calculating toll cost...');
-      try {
-        const tollCost = await estimateTollCost(startTollGate, endTollGate, vehicleClass);
-        setEstimatedTollCost(tollCost);
-      } catch (error) {
-        console.error('Error calculating toll cost:', error);
-        setEstimatedTollCost(null);
+    try {
+      // Basic route calculations
+      const distance = calculateDistance(start, end);
+      const avgSpeedKmh = 50;
+      const durationMinutes = Math.round((distance / avgSpeedKmh) * 60);
+      
+      // Generate basic instructions
+      const instructions = [
+        {
+          instruction: `Mulai perjalanan dari titik awal`,
+          distance: 0,
+          type: 'depart',
+          modifier: 'straight'
+        },
+        {
+          instruction: `Arah menuju tujuan`,
+          distance: distance * 1000, // Konversi ke meter
+          type: 'continue',
+          modifier: 'straight'
+        },
+        {
+          instruction: `Sampai di tujuan`,
+          distance: 0,
+          type: 'arrive',
+          modifier: 'straight'
+        }
+      ];
+      
+      // Update route state in a single batch
+      setRouteDistance(distance);
+      setRouteDuration(durationMinutes);
+      setRouteInstructions(instructions);
+      setShowRouteInstructions(true);
+      
+      // Calculate toll information if necessary
+      let startTollGate = null;
+      let endTollGate = null;
+      let tollCost = null;
+      
+      if (useToll) {
+        console.log('Finding nearest toll gates...');
+        startTollGate = findNearestTollGate(start);
+        endTollGate = findNearestTollGate(end);
+        
+        if (startTollGate && endTollGate) {
+          console.log('Calculating toll cost...');
+          tollCost = await estimateTollCost(startTollGate, endTollGate, vehicleClass);
+        }
       }
-    } else {
+      
+      // Update toll state in a separate batch to avoid cascading updates
+      setNearestStartTollGate(startTollGate);
+      setNearestEndTollGate(endTollGate);
+      setEstimatedTollCost(tollCost);
+      
+    } catch (error) {
+      console.error('Error calculating route info:', error);
+      
+      // Minimal fallback on error
+      const distance = calculateDistance(start, end);
+      setRouteDistance(distance);
+      
+      const avgSpeedKmh = 50;
+      const durationMinutes = Math.round((distance / avgSpeedKmh) * 60);
+      setRouteDuration(durationMinutes);
+      
+      // Reset other state to avoid stale data
+      setRouteInstructions([]);
+      setShowRouteInstructions(false);
+      setNearestStartTollGate(null);
+      setNearestEndTollGate(null);
       setEstimatedTollCost(null);
+    } finally {
+      // Always reset calculation flag when done
+      isCalculatingRoute.current = false;
+    }
+  };
+
+  /**
+   * Handle route calculation completed - FIXED
+   * Prevents unnecessary state updates
+   */
+  const handleRouteCalculated = (routeData) => {
+    if (!routeData) return;
+    
+    // Track if any updates are needed
+    let needsUpdate = false;
+    
+    // Store previous values to check if they've actually changed
+    const prevDistance = routeDistance;
+    const prevDuration = routeDuration;
+    
+    // Only update if values are different to avoid needless re-renders
+    if (routeData.distance !== prevDistance) {
+      setRouteDistance(routeData.distance);
+      needsUpdate = true;
+    }
+    
+    if (routeData.duration !== prevDuration) {
+      setRouteDuration(routeData.duration);
+      needsUpdate = true;
+    }
+    
+    // For instructions, we need to check if they're significantly different
+    // A simple approach is to check the array length
+    if (routeData.instructions && 
+        (!routeInstructions || 
+         routeInstructions.length !== routeData.instructions.length)) {
+      setRouteInstructions(routeData.instructions);
+      
+      // Only set this to true if we actually have instructions
+      if (routeData.instructions.length > 0) {
+        setShowRouteInstructions(true);
+      }
+      
+      needsUpdate = true;
+    }
+    
+    // If any updates were made, recalculate toll information
+    if (needsUpdate && useToll && startPoint && endPoint) {
+      // We need to recalculate toll information, but we should
+      // avoid an immediate call to avoid cascading updates.
+      // Instead, schedule it for the next tick
+      setTimeout(() => {
+        const startTollGate = findNearestTollGate(startPoint);
+        const endTollGate = findNearestTollGate(endPoint);
+        
+        setNearestStartTollGate(startTollGate);
+        setNearestEndTollGate(endTollGate);
+        
+        if (startTollGate && endTollGate) {
+          estimateTollCost(startTollGate, endTollGate, vehicleClass)
+            .then(cost => {
+              setEstimatedTollCost(cost);
+            })
+            .catch(err => {
+              console.error('Error estimating toll cost:', err);
+              setEstimatedTollCost(null);
+            });
+        } else {
+          setEstimatedTollCost(null);
+        }
+      }, 0);
     }
   };
 
@@ -425,7 +660,11 @@ function App() {
     
     // Calculate route info when both points are set
     if (endPoint) {
-      calculateRouteInfo(location.position, endPoint);
+      // Schedule calculation for next tick to avoid
+      // state update issues during render
+      setTimeout(() => {
+        calculateRouteInfo(location.position, endPoint);
+      }, 0);
     }
   };
   
@@ -435,7 +674,11 @@ function App() {
     
     // Calculate route info when both points are set
     if (startPoint) {
-      calculateRouteInfo(startPoint, location.position);
+      // Schedule calculation for next tick to avoid
+      // state update issues during render
+      setTimeout(() => {
+        calculateRouteInfo(startPoint, location.position);
+      }, 0);
     }
   };
 
@@ -450,7 +693,11 @@ function App() {
     
     // Calculate route info when both points are set
     if (endPoint) {
-      calculateRouteInfo(position, endPoint);
+      // Schedule calculation for next tick to avoid
+      // state update issues during render
+      setTimeout(() => {
+        calculateRouteInfo(position, endPoint);
+      }, 0);
     }
   };
 
@@ -464,6 +711,17 @@ function App() {
     setNearestStartTollGate(null);
     setNearestEndTollGate(null);
     setEstimatedTollCost(null);
+    setRouteInstructions([]);
+    setShowRouteInstructions(false);
+    
+    // Reset route calculation state
+    prevRouteRef.current = {
+      startPoint: null,
+      endPoint: null,
+      transportMode: transportMode,
+      useToll: useToll,
+      vehicleClass: vehicleClass
+    };
   };
 
   // Render helper components
@@ -581,6 +839,41 @@ function App() {
           <div style={styles.statusLabel}>Perkiraan Waktu</div>
           <div>{routeDuration ? routeDuration + ' menit' : 'Menghitung...'}</div>
         </div>
+        
+        {/* Mode Transportasi */}
+        <div style={styles.card}>
+          <div style={styles.statusLabel}>Mode Transportasi</div>
+          <select
+            value={transportMode}
+            onChange={(e) => {
+              const newMode = e.target.value;
+              setTransportMode(newMode);
+              
+              // Only recalculate if we have both points
+              if (startPoint && endPoint) {
+                // Use setTimeout to avoid state update during render
+                setTimeout(() => {
+                  // Update reference first
+                  prevRouteRef.current.transportMode = newMode;
+                  // Then recalculate
+                  calculateRouteInfo(startPoint, endPoint);
+                }, 0);
+              }
+            }}
+            style={{
+              width: '100%',
+              padding: '6px',
+              marginTop: '4px',
+              borderRadius: '4px',
+              border: '1px solid #e2e8f0'
+            }}
+          >
+            <option value="driving-car">Mobil</option>
+            <option value="driving-hgv">Truk</option>
+            <option value="cycling-regular">Sepeda</option>
+            <option value="foot-walking">Jalan Kaki</option>
+          </select>
+        </div>
       </>
     );
   };
@@ -610,9 +903,15 @@ function App() {
                   onChange={() => {
                     const newUseToll = !useToll;
                     setUseToll(newUseToll);
+                    
                     if (startPoint && endPoint) {
-                      // Recalculate route info when toll preference changes
-                      calculateRouteInfo(startPoint, endPoint);
+                      // Use setTimeout to avoid state update during render
+                      setTimeout(() => {
+                        // Update reference first
+                        prevRouteRef.current.useToll = newUseToll;
+                        // Then recalculate
+                        calculateRouteInfo(startPoint, endPoint);
+                      }, 0);
                     }
                   }}
                   style={{
@@ -690,8 +989,14 @@ function App() {
                     onClick={() => {
                       console.log('Manual refresh of toll cost');
                       if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate) {
-                        // Force recalculation
-                        calculateRouteInfo(startPoint, endPoint);
+                        // Force estimation without triggering full recalculation
+                        estimateTollCost(nearestStartTollGate, nearestEndTollGate, vehicleClass)
+                          .then(cost => {
+                            setEstimatedTollCost(cost);
+                          })
+                          .catch(err => {
+                            console.error('Error estimating toll cost:', err);
+                          });
                       }
                     }}
                     style={{
@@ -724,7 +1029,9 @@ function App() {
                       console.log('Manual refresh of toll cost');
                       if (startPoint && endPoint) {
                         // Force recalculation
-                        calculateRouteInfo(startPoint, endPoint);
+                        setTimeout(() => {
+                          calculateRouteInfo(startPoint, endPoint);
+                        }, 0);
                       }
                     }}
                     style={{
@@ -816,14 +1123,28 @@ function App() {
             id="vehicleClass"
             value={vehicleClass}
             onChange={e => {
-              setVehicleClass(e.target.value);
+              const newVehicleClass = e.target.value;
+              setVehicleClass(newVehicleClass);
+              
               // Refresh toll estimate if we already have a route
               if (startPoint && endPoint && nearestStartTollGate && nearestEndTollGate && useToll) {
                 console.log('Vehicle class changed, recalculating toll cost');
-                // Short delay to ensure state updates
+                
+                // Use setTimeout to avoid state update during render
                 setTimeout(() => {
-                  calculateRouteInfo(startPoint, endPoint);
-                }, 100);
+                  // Update reference first
+                  prevRouteRef.current.vehicleClass = newVehicleClass;
+                  
+                  // Just update toll cost without full recalculation
+                  estimateTollCost(nearestStartTollGate, nearestEndTollGate, newVehicleClass)
+                    .then(cost => {
+                      setEstimatedTollCost(cost);
+                    })
+                    .catch(err => {
+                      console.error('Error estimating toll cost:', err);
+                      setEstimatedTollCost(null);
+                    });
+                }, 0);
               }
             }}
             className="w-full px-3 py-2 rounded-lg bg-gray-700 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
@@ -1001,9 +1322,14 @@ function App() {
           </Marker>
         )}
         
-        {/* Route line */}
+        {/* Route line and detailed route */}
         {startPoint && endPoint && (
-          <RouteLine startPoint={startPoint} endPoint={endPoint} />
+          <DetailedRouteMap 
+            startPoint={startPoint} 
+            endPoint={endPoint} 
+            transportMode={transportMode}
+            onRouteCalculated={handleRouteCalculated}
+          />
         )}
         
         {position && <MapController position={position} />}

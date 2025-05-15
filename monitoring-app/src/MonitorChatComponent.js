@@ -3,9 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   MessageCircle, 
   Send, 
-  X, 
-  Users, 
-  ChevronUp, 
+  X,
   ChevronDown, 
   CheckCheck 
 } from 'lucide-react';
