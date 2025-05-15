@@ -120,17 +120,6 @@ const chatValidation = {
     return { valid: true };
   },
   
-  /**
-   * Membersihkan data rate limiting
-   */
-  cleanupRateLimits: function() {
-    const now = Date.now();
-    Object.keys(this.messageCounts).forEach(clientId => {
-      if (now - this.messageCounts[clientId].lastMessage > 120000) { // 2 menit
-        delete this.messageCounts[clientId];
-      }
-    });
-  }
 };
 
 /**
@@ -676,8 +665,6 @@ const cleanupInactiveDrivers = () => {
     }
   });
   
-  // Cleanup rate limits
-  chatValidation.cleanupRateLimits();
 };
 
 // Run cleanup every 5 minutes
@@ -739,8 +726,6 @@ app.get('/api/toll-gates', (req, res) => {
   res.json(tollgates);
 });
 
-// Tambahkan interval untuk pembersihan rate limits chat
-setInterval(chatValidation.cleanupRateLimits, 5 * 60 * 1000);
 
 // Start the server
 server.listen(config.server.port, config.server.host, () => {

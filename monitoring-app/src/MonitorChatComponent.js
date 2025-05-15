@@ -15,7 +15,6 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
   const [messages, setMessages] = useState({});
   const [newMessage, setNewMessage] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const [minimized, setMinimized] = useState(false);
   const messagesEndRef = useRef(null);
   const [selectedDriver, setSelectedDriver] = useState(null);
   
@@ -40,10 +39,10 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
     },
     chatContainer: {
       position: 'absolute',
-      bottom: minimized ? '80px' : '16px',
+      bottom: '16px',
       right: '16px',
       width: '520px',
-      height: minimized ? '60px' : '500px',
+      height: '500px',
       backgroundColor: 'white',
       borderRadius: '12px',
       boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
@@ -229,10 +228,10 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
   
   // Effect untuk auto-scroll ke pesan terbaru
   useEffect(() => {
-    if (messagesEndRef.current && isOpen && !minimized && selectedDriver) {
+    if (messagesEndRef.current && isOpen && selectedDriver) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isOpen, minimized, selectedDriver]);
+  }, [messages, isOpen, selectedDriver]);
   
   // Effect untuk menyiapkan socket listeners
   useEffect(() => {
@@ -258,7 +257,6 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
         // Tampilkan chat panel jika mendapat pesan baru dari driver yang belum terbuka chatnya
         if (!isOpen && data.from !== 'monitor') {
           setIsOpen(true);
-          setMinimized(false);
           setSelectedDriver(driverId);
         }
         
@@ -385,15 +383,12 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
   // Toggle chat panel
   const toggleChat = () => {
     setIsOpen(!isOpen);
-    if (minimized && isOpen) {
-      setMinimized(false);
-    }
   };
   
-  // Toggle minimize chat panel
-  const toggleMinimize = (e) => {
+  // Minimize chat panel (menjadi MessageCircle)
+  const minimizeChat = (e) => {
     e.stopPropagation();
-    setMinimized(!minimized);
+    setIsOpen(false);
   };
   
   // Pilih driver untuk chat
@@ -424,53 +419,50 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
   
   return (
     <>
-      {/* Tombol Chat */}
+      {/* Tombol Chat (yang juga berfungsi sebagai tampilan minimized) */}
       <button 
         style={styles.chatButton} 
         onClick={toggleChat}
         aria-label="Toggle chat"
       >
         <MessageCircle size={24} />
-        {!isOpen && getTotalUnreadCount() > 0 && (
+        {getTotalUnreadCount() > 0 && (
           <div style={styles.floatingBadge}>
             {getTotalUnreadCount() > 9 ? '9+' : getTotalUnreadCount()}
           </div>
         )}
       </button>
       
-      {/* Container Chat */}
-      <div style={styles.chatContainer}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div style={styles.title}>
-            <div style={styles.statusIndicator}></div>
-            {minimized 
-              ? `Driver Chat ${getTotalUnreadCount() > 0 ? `(${getTotalUnreadCount()})` : ''}` 
-              : selectedDriver 
+      {/* Container Chat - hanya ditampilkan saat isOpen true */}
+      {isOpen && (
+        <div style={styles.chatContainer}>
+          {/* Header */}
+          <div style={styles.header}>
+            <div style={styles.title}>
+              <div style={styles.statusIndicator}></div>
+              {selectedDriver 
                 ? `Chat with: ${selectedDriver}` 
                 : 'Driver Chat'
-            }
+              }
+            </div>
+            <div style={{ display: 'flex' }}>
+              <button 
+                style={styles.minimizeButton} 
+                onClick={minimizeChat}
+                aria-label="Minimize chat"
+              >
+                <ChevronDown size={18} />
+              </button>
+              <button 
+                style={styles.closeButton} 
+                onClick={toggleChat}
+                aria-label="Close chat"
+              >
+                <X size={18} />
+              </button>
+            </div>
           </div>
-          <div style={{ display: 'flex' }}>
-            <button 
-              style={styles.minimizeButton} 
-              onClick={toggleMinimize}
-              aria-label={minimized ? "Maximize chat" : "Minimize chat"}
-            >
-              {minimized ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-            </button>
-            <button 
-              style={styles.closeButton} 
-              onClick={toggleChat}
-              aria-label="Close chat"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-        
-        {/* Chat Content - hanya ditampilkan jika tidak diminimalisir */}
-        {!minimized && (
+          
           <div style={styles.chatContent}>
             {/* Daftar Driver */}
             <div style={styles.driverList} className="custom-scrollbar">
@@ -575,8 +567,8 @@ const MonitorChatComponent = ({ socket, drivers, activeDriver, connected }) => {
               )}
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 };

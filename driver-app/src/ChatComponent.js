@@ -29,12 +29,31 @@ const ChatComponent = ({ socket, driverId, connected }) => {
       zIndex: 1000,
       border: 'none'
     },
+    minimizedButton: {
+      position: 'absolute',
+      bottom: '16px',
+      right: '16px',
+      width: '50px',
+      height: '50px',
+      borderRadius: '50%',
+      backgroundColor: '#3b82f6',
+      color: 'white',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      cursor: 'pointer',
+      boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+      zIndex: 1000,
+      border: 'none',
+      transform: 'scale(0.85)',
+      transition: 'all 0.3s ease'
+    },
     chatContainer: {
       position: 'absolute',
-      bottom: minimized ? '80px' : '16px',
+      bottom: '16px',
       right: '16px',
       width: '320px',
-      height: minimized ? '60px' : '400px',
+      height: '400px',
       backgroundColor: 'white',
       borderRadius: '12px',
       boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
@@ -43,8 +62,8 @@ const ChatComponent = ({ socket, driverId, connected }) => {
       overflow: 'hidden',
       zIndex: 1000,
       transition: 'all 0.3s ease',
-      transform: isOpen ? 'translateY(0)' : 'translateY(150%)',
-      opacity: isOpen ? 1 : 0
+      transform: isOpen && !minimized ? 'translateY(0)' : 'translateY(150%)',
+      opacity: isOpen && !minimized ? 1 : 0
     },
     header: {
       padding: '12px 16px',
@@ -252,10 +271,13 @@ const ChatComponent = ({ socket, driverId, connected }) => {
   
   // Toggle chat panel
   const toggleChat = () => {
-    setIsOpen(!isOpen);
-    if (minimized && isOpen) {
-      setMinimized(false); // Jika panel diminimize dan akan ditutup, reset minimize state
+    if (minimized) {
+      // Jika sudah diminimize, kembalikan ke keadaan terbuka
+      setMinimized(false);
+      return;
     }
+    
+    setIsOpen(!isOpen);
     
     // Jika panel dibuka, tandai semua pesan dari monitor sebagai telah dibaca
     if (!isOpen && socket && unreadCount > 0) {
@@ -284,19 +306,37 @@ const ChatComponent = ({ socket, driverId, connected }) => {
   
   return (
     <>
-      {/* Tombol Chat */}
-      <button 
-        style={styles.chatButton} 
-        onClick={toggleChat}
-        aria-label="Toggle chat"
-      >
-        <MessageCircle size={24} />
-        {!isOpen && unreadCount > 0 && (
-          <div style={styles.unreadBadge}>
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </div>
-        )}
-      </button>
+      {/* Tombol Chat (hanya tampil jika chat tidak terbuka) */}
+      {!isOpen && (
+        <button 
+          style={styles.chatButton} 
+          onClick={toggleChat}
+          aria-label="Toggle chat"
+        >
+          <MessageCircle size={24} />
+          {unreadCount > 0 && (
+            <div style={styles.unreadBadge}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </div>
+          )}
+        </button>
+      )}
+      
+      {/* Tombol Chat Diminimize (hanya tampil jika chat diminimize) */}
+      {isOpen && minimized && (
+        <button 
+          style={styles.minimizedButton} 
+          onClick={toggleChat}
+          aria-label="Expand chat"
+        >
+          <MessageCircle size={24} />
+          {unreadCount > 0 && (
+            <div style={styles.unreadBadge}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </div>
+          )}
+        </button>
+      )}
       
       {/* Container Chat */}
       <div style={styles.chatContainer}>
@@ -305,11 +345,11 @@ const ChatComponent = ({ socket, driverId, connected }) => {
           <div style={styles.title}>
             <div style={styles.statusIndicator}></div>
             Pusat Monitoring
-            {!minimized && unreadCount > 0 && <span style={{fontSize: '12px', marginLeft: '8px'}}>({unreadCount})</span>}
+            {unreadCount > 0 && <span style={{fontSize: '12px', marginLeft: '8px'}}>({unreadCount})</span>}
           </div>
           <div style={{ display: 'flex' }}>
             <button style={styles.minimizeButton} onClick={toggleMinimize}>
-              {minimized ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              <ChevronDown size={18} />
             </button>
             <button style={styles.closeButton} onClick={toggleChat}>
               <X size={18} />
@@ -317,55 +357,50 @@ const ChatComponent = ({ socket, driverId, connected }) => {
           </div>
         </div>
         
-        {/* Konten Chat (hanya ditampilkan jika tidak diminimalisir) */}
-        {!minimized && (
-          <>
-            {/* Daftar Pesan */}
-            <div style={styles.messagesContainer} className="custom-scrollbar">
-              {messages.length === 0 ? (
-                <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px', fontSize: '14px' }}>
-                  Belum ada pesan. Mulai chat dengan mengirim pesan.
+        {/* Daftar Pesan */}
+        <div style={styles.messagesContainer} className="custom-scrollbar">
+          {messages.length === 0 ? (
+            <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: '20px', fontSize: '14px' }}>
+              Belum ada pesan. Mulai chat dengan mengirim pesan.
+            </div>
+          ) : (
+            messages.map((message, index) => {
+              const isMine = message.from === driverId;
+              return (
+                <div key={index} style={styles.messageItem(isMine)}>
+                  <div>{message.text}</div>
+                  <div style={styles.messageTime(isMine)}>
+                    {formatMessageTime(message.timestamp)}
+                  </div>
                 </div>
-              ) : (
-                messages.map((message, index) => {
-                  const isMine = message.from === driverId;
-                  return (
-                    <div key={index} style={styles.messageItem(isMine)}>
-                      <div>{message.text}</div>
-                      <div style={styles.messageTime(isMine)}>
-                        {formatMessageTime(message.timestamp)}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-              <div ref={messagesEndRef} />
-            </div>
-            
-            {/* Input Pesan */}
-            <div style={styles.inputContainer}>
-              <input
-                style={styles.input}
-                type="text"
-                placeholder="Ketik pesan..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyPress={handleKeyPress}
-                disabled={!connected}
-              />
-              <button 
-                style={{
-                  ...styles.sendButton,
-                  ...((!connected || !newMessage.trim()) && styles.disabledSendButton)
-                }} 
-                onClick={sendMessage}
-                disabled={!connected || !newMessage.trim()}
-              >
-                <Send size={18} />
-              </button>
-            </div>
-          </>
-        )}
+              );
+            })
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+        
+        {/* Input Pesan */}
+        <div style={styles.inputContainer}>
+          <input
+            style={styles.input}
+            type="text"
+            placeholder="Ketik pesan..."
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyPress={handleKeyPress}
+            disabled={!connected}
+          />
+          <button 
+            style={{
+              ...styles.sendButton,
+              ...((!connected || !newMessage.trim()) && styles.disabledSendButton)
+            }} 
+            onClick={sendMessage}
+            disabled={!connected || !newMessage.trim()}
+          >
+            <Send size={18} />
+          </button>
+        </div>
       </div>
     </>
   );
