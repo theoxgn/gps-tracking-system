@@ -114,7 +114,8 @@ const DetailedRouteMap = ({
           onRouteCalculated({
             distance: route.distance / 1000, // Convert to km
             duration: Math.round(route.duration / 60), // Convert to minutes
-            instructions: instructions
+            instructions: instructions,
+            routeGeometry: [startPoint, endPoint]
           });
         }
       } else {
@@ -140,7 +141,8 @@ const DetailedRouteMap = ({
         onRouteCalculated({
           distance: simpleDistance,
           duration: durationMinutes,
-          instructions: simpleInstructions
+          instructions: simpleInstructions,
+          routeGeometry: [startPoint, endPoint]
         });
       }
     } finally {

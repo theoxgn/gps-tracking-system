@@ -50,8 +50,8 @@ if (!fs.existsSync(config.storage.logDirectory)) {
 // Initialize driver data storage
 let activeDrivers = {};
 let driverHistory = {};
-// Initialize chat data storage
 let chatHistory = {}; // Format: { driverId: [messages] }
+let driverRoutes = {}; 
 
 // Utilitas untuk validasi dan rate limiting chat
 const chatValidation = {
@@ -411,7 +411,61 @@ io.on("connection", (socket) => {
       driverId: data.deviceID
     });
   });
-  
+
+  // Handle driver route updates
+  socket.on("driverRoute", (data) => {
+    // Validate data format
+    if (!data || !data.deviceID || !data.startPoint || !data.endPoint) {
+      console.error("Invalid route data received");
+      return;
+    }
+    
+    console.log(`Route update from ${data.deviceID}: ${data.startPoint} to ${data.endPoint}`);
+    
+    // Store the route data
+    driverRoutes[data.deviceID] = {
+      deviceID: data.deviceID,
+      startPoint: data.startPoint,
+      endPoint: data.endPoint,
+      routeGeometry: data.routeGeometry || [data.startPoint, data.endPoint],
+      transportMode: data.transportMode || 'driving-car',
+      distance: data.distance,
+      duration: data.duration,
+      timestamp: Date.now()
+    };
+    
+    // Update the active driver data with route information
+    if (activeDrivers[data.deviceID]) {
+      activeDrivers[data.deviceID].route = {
+        startPoint: data.startPoint,
+        endPoint: data.endPoint,
+        hasRouteData: true
+      };
+    }
+    
+    // Broadcast to all monitoring clients
+    io.to(Object.values(connectedClients.monitors)).emit("driverRouteUpdate", driverRoutes[data.deviceID]);
+    
+    // Acknowledge receipt to the driver
+    socket.emit("routeAck", {
+      deviceID: data.deviceID,
+      received: true
+    });
+  });
+
+  socket.on("requestDriverRoute", (data) => {
+    if (!data || !data.driverId) return;
+    
+    if (driverRoutes[data.driverId]) {
+      socket.emit("driverRouteUpdate", driverRoutes[data.driverId]);
+    } else {
+      socket.emit("driverRouteUpdate", {
+        deviceID: data.driverId,
+        hasRouteData: false
+      });
+    }
+  });
+
   // Handle monitor-specific commands
   socket.on("monitorCommand", (command) => {
     if (!command || !command.type) return;
@@ -623,6 +677,11 @@ io.on("connection", (socket) => {
       const monitorId = data.monitorId || 'monitor-' + socket.id;
       connectedClients.monitors[monitorId] = socket.id;
       console.log(`Monitor registered: ${monitorId}`);
+      
+      // Send all active driver routes to the new monitor
+      Object.values(driverRoutes).forEach(route => {
+        socket.emit("driverRouteUpdate", route);
+      });
     }
   });
 });

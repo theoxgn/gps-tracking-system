@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import { io } from 'socket.io-client';
 import { 
@@ -10,9 +10,11 @@ import {
   WifiOff, 
   RefreshCw, 
   MapPin, 
-  Navigation
+  Navigation,
+  Route as RouteIcon
 } from 'lucide-react';
 import MonitorChatComponent from './MonitorChatComponent';
+import MonitorRouteMap from './components/MonitorRouteMap';
 import L from 'leaflet';
 
 // =================== Constants ===================
@@ -122,7 +124,7 @@ const injectLeafletStyles = () => {
 // =================== Components ===================
 
 // Component to display a single driver in the list
-const DriverItem = ({ driver, isActive, onClick }) => {
+const DriverItem = ({ driver, isActive, onClick, hasRoute }) => {
   return (
     <div 
       className={`p-4 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-blue-500 text-white border-blue-400 shadow-md' : 'bg-slate-100 hover:bg-blue-50 border-transparent'} group`}
@@ -145,12 +147,20 @@ const DriverItem = ({ driver, isActive, onClick }) => {
           {formatSpeed(driver.speed)}
         </div>
       </div>
+      
+      {/* Route indicator badge */}
+      {hasRoute && (
+        <div className={`mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${isActive ? 'bg-blue-400 text-white' : 'bg-blue-100 text-blue-600'}`}>
+          <RouteIcon size={12} />
+          Active Route
+        </div>
+      )}
     </div>
   );
 };
 
 // Component to display the list of drivers
-const DriversList = ({ drivers, activeDriver, onDriverSelect }) => {
+const DriversList = ({ drivers, activeDriver, onDriverSelect, driverRoutes }) => {
   return (
     <div className="flex-grow overflow-auto bg-white px-4 py-5 custom-scrollbar">
       <h2 className="text-lg font-semibold mb-4 text-blue-500 flex items-center gap-2 border-b border-slate-200 pb-2">
@@ -168,6 +178,7 @@ const DriversList = ({ drivers, activeDriver, onDriverSelect }) => {
             driver={driver}
             isActive={activeDriver === id}
             onClick={() => onDriverSelect(id)}
+            hasRoute={Boolean(driverRoutes[id])}
           />
         ))}
       </div>
@@ -176,7 +187,16 @@ const DriversList = ({ drivers, activeDriver, onDriverSelect }) => {
 };
 
 // Component for the sidebar
-const Sidebar = ({ drivers, connected, activeDriver, autoCenter, onDriverSelect, onToggleAutoCenter }) => {
+const Sidebar = ({ 
+  drivers, 
+  connected, 
+  activeDriver, 
+  autoCenter, 
+  onDriverSelect, 
+  onToggleAutoCenter, 
+  driverRoutes,
+  updateDriverRoute  // Changed from setDriverRoutes to updateDriverRoute
+}) => {
   return (
     <div style={{ width: '320px' }} className="bg-white text-slate-700 flex flex-col shadow-lg border-r border-slate-200 overflow-hidden">
       <div className="bg-blue-500 p-4 shadow-md flex flex-col gap-2">
@@ -202,7 +222,75 @@ const Sidebar = ({ drivers, connected, activeDriver, autoCenter, onDriverSelect,
         drivers={drivers}
         activeDriver={activeDriver}
         onDriverSelect={onDriverSelect}
+        driverRoutes={driverRoutes}
       />
+      
+      {/* Display route information when a driver with route is selected */}
+      {activeDriver && driverRoutes[activeDriver] && (
+        <div className="p-4 bg-blue-50 rounded-lg mx-4 mb-4 border border-blue-100">
+          <h3 className="text-lg font-semibold text-blue-700 mb-2">Route Information</h3>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <div className="text-blue-500 font-medium">Distance</div>
+              <div>{driverRoutes[activeDriver].distance?.toFixed(2) || '?'} km</div>
+            </div>
+            <div>
+              <div className="text-blue-500 font-medium">Duration</div>
+              <div>{driverRoutes[activeDriver].duration || '?'} minutes</div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-blue-500 font-medium">From</div>
+              <div className="truncate">{driverRoutes[activeDriver].startPoint[0].toFixed(6)}, {driverRoutes[activeDriver].startPoint[1].toFixed(6)}</div>
+            </div>
+            <div className="col-span-2">
+              <div className="text-blue-500 font-medium">To</div>
+              <div className="truncate">{driverRoutes[activeDriver].endPoint[0].toFixed(6)}, {driverRoutes[activeDriver].endPoint[1].toFixed(6)}</div>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Test button to create route manually */}
+      {activeDriver && (
+        <div className="mt-3 px-4 pb-4">
+          <button
+            className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 px-4 rounded-lg shadow text-sm"
+            onClick={() => {
+              if (!drivers[activeDriver]) return;
+              
+              console.log('Creating test route for driver:', activeDriver);
+              
+              // Get driver's position
+              const pos = drivers[activeDriver].position;
+              
+              // Create test route - simple path with a few points
+              const testRoute = {
+                deviceID: activeDriver,
+                startPoint: pos,
+                endPoint: [pos[0] + 0.01, pos[1] + 0.01], // ~1km northeast
+                routeGeometry: [
+                  pos,
+                  [pos[0] + 0.002, pos[1] + 0.003],
+                  [pos[0] + 0.005, pos[1] + 0.006],
+                  [pos[0] + 0.008, pos[1] + 0.009],
+                  [pos[0] + 0.01, pos[1] + 0.01]
+                ],
+                distance: 1.5,
+                duration: 5,
+                timestamp: Date.now()
+              };
+              
+              // Log the test route
+              console.log('Test route data:', testRoute);
+              
+              // Update the driver route
+              updateDriverRoute(activeDriver, testRoute);
+            }}
+          >
+            Test Route Display
+          </button>
+        </div>
+      )}
       
       <div className="p-5 bg-slate-100 border-t border-slate-200 flex flex-col gap-2">
         <button 
@@ -303,6 +391,7 @@ const useDrivers = () => {
   const [drivers, setDrivers] = useState({});
   const [connected, setConnected] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [driverRoutes, setDriverRoutes] = useState({});
   
   // Initialize socket connection
   useEffect(() => {
@@ -344,6 +433,49 @@ const useDrivers = () => {
       });
     });
     
+    // Add a specific debug listener for route updates
+    socketInstance.on('driverRouteUpdate', (routeData) => {
+      if (!routeData || !routeData.deviceID) {
+        console.warn('Received invalid route data:', routeData);
+        return;
+      }
+      
+      console.log('✅ Received route update for driver:', routeData.deviceID);
+      console.log('Route details:', {
+        hasGeometry: Boolean(routeData.routeGeometry),
+        geometryType: routeData.routeGeometry ? typeof routeData.routeGeometry : 'N/A',
+        geometryLength: Array.isArray(routeData.routeGeometry) ? routeData.routeGeometry.length : 'N/A',
+        startPoint: routeData.startPoint,
+        endPoint: routeData.endPoint,
+        distance: routeData.distance,
+        duration: routeData.duration
+      });
+      
+      // Ensure routeGeometry is an array even if it's missing
+      if (!routeData.routeGeometry || !Array.isArray(routeData.routeGeometry)) {
+        console.warn('Invalid routeGeometry, using fallback straight line');
+        if (routeData.startPoint && routeData.endPoint) {
+          routeData.routeGeometry = [routeData.startPoint, routeData.endPoint];
+        } else {
+          routeData.routeGeometry = [];
+        }
+      }
+      
+      setDriverRoutes(prevRoutes => ({
+        ...prevRoutes,
+        [routeData.deviceID]: routeData
+      }));
+    });
+    
+    // Add a debug listener for when route requests are sent
+    const originalEmit = socketInstance.emit;
+    socketInstance.emit = function(eventName, ...args) {
+      if (eventName === 'requestDriverRoute') {
+        console.log('🔍 Requesting route for driver:', args[0]?.driverId);
+      }
+      return originalEmit.apply(this, [eventName, ...args]);
+    };
+    
     setSocket(socketInstance);
     
     return () => {
@@ -351,13 +483,13 @@ const useDrivers = () => {
     };
   }, []);
 
-  return { drivers, connected, socket };
+  return { drivers, connected, socket, driverRoutes, setDriverRoutes };
 };
 
 // =================== Main Component ===================
 
 function App() {
-  const { drivers, connected, socket } = useDrivers();
+  const { drivers, connected, socket, driverRoutes, setDriverRoutes } = useDrivers();
   const [activeDriver, setActiveDriver] = useState(null);
   const [autoCenter, setAutoCenter] = useState(true);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -379,14 +511,40 @@ function App() {
     }
   }, [mapRef]);
 
+  // Effect to request route data when selecting a driver
+  useEffect(() => {
+    if (socket && activeDriver) {
+      console.log('Requesting route for driver:', activeDriver);
+      socket.emit('requestDriverRoute', { driverId: activeDriver });
+      
+      // Add debug log to check if route data exists
+      if (driverRoutes[activeDriver]) {
+        console.log('Current route data for this driver:', driverRoutes[activeDriver]);
+      } else {
+        console.log('No route data available for this driver yet');
+      }
+    }
+  }, [activeDriver, socket, driverRoutes]);
+
   // Select a driver to focus on
   const handleDriverSelect = (driverId) => {
+    // Toggle selection if clicking the same driver
     setActiveDriver(driverId === activeDriver ? null : driverId);
   };
 
   // Toggle auto-center functionality
   const handleToggleAutoCenter = () => {
     setAutoCenter(!autoCenter);
+  };
+  
+  // Function to manually update a driver's route (for testing)
+  const updateDriverRoute = (driverId, routeData) => {
+    console.log('Updating route for driver:', driverId);
+    
+    setDriverRoutes(prev => ({
+      ...prev,
+      [driverId]: routeData
+    }));
   };
 
   return (
@@ -399,6 +557,8 @@ function App() {
         autoCenter={autoCenter}
         onDriverSelect={handleDriverSelect}
         onToggleAutoCenter={handleToggleAutoCenter}
+        driverRoutes={driverRoutes}
+        updateDriverRoute={updateDriverRoute}
       />
       
       {/* Map */}
@@ -420,6 +580,7 @@ function App() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           
+          {/* Driver markers */}
           {Object.entries(drivers).map(([id, driver]) => (
             <DriverMarker 
               key={id}
@@ -428,6 +589,58 @@ function App() {
               isActive={activeDriver === id}
             />
           ))}
+          
+          {/* Direct test route for debugging */}
+          {activeDriver && drivers[activeDriver] && (
+            <Polyline
+              positions={[
+                drivers[activeDriver].position,
+                [
+                  drivers[activeDriver].position[0] + 0.01, 
+                  drivers[activeDriver].position[1] + 0.01
+                ]
+              ]}
+              color="red"
+              weight={5}
+              opacity={0.7}
+              dashArray="5, 5"
+            />
+          )}
+          
+          {/* Display selected driver's route with better validation */}
+          {activeDriver && driverRoutes[activeDriver] && (
+            <>
+              {console.log('Rendering route for', activeDriver, 
+                `geometry points: ${Array.isArray(driverRoutes[activeDriver].routeGeometry) ? 
+                  driverRoutes[activeDriver].routeGeometry.length : 'not an array'}`
+              )}
+              
+              {/* Only try to render if we have valid route data */}
+              {Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
+              driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
+                <MonitorRouteMap
+                  routeData={driverRoutes[activeDriver].routeGeometry}
+                  startPoint={driverRoutes[activeDriver].startPoint}
+                  endPoint={driverRoutes[activeDriver].endPoint}
+                  fitRoute={true}
+                />
+              ) : (
+                // If we don't have valid route data but have start/end points, render a simple line
+                driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint ? (
+                  <Polyline
+                    positions={[
+                      driverRoutes[activeDriver].startPoint,
+                      driverRoutes[activeDriver].endPoint
+                    ]}
+                    color="#3b82f6"
+                    weight={4}
+                    opacity={0.7}
+                    dashArray="10, 10"
+                  />
+                ) : null
+              )}
+            </>
+          )}
           
           <MapController 
             activeDriver={activeDriver} 
@@ -442,6 +655,27 @@ function App() {
           activeDriver={activeDriver} 
           connected={connected} 
         />
+        
+        {/* Debug message when a driver is selected but has invalid route data */}
+        {activeDriver && driverRoutes[activeDriver] && !(
+          Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
+          driverRoutes[activeDriver].routeGeometry.length >= 2
+        ) && !(
+          driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint
+        ) && (
+          <div style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            padding: '10px',
+            border: '1px solid red',
+            borderRadius: '5px',
+            zIndex: 1000
+          }}>
+            ⚠️ Invalid route data for driver {activeDriver}
+          </div>
+        )}
       </div>
     </div>
   );

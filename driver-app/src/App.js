@@ -275,10 +275,18 @@ function App() {
         }
       ];
       
+      const routeData = {
+        distance: distance,
+        duration: durationMinutes,
+        instructions: instructions,
+        routeGeometry: [start, end] // Simple straight line for now
+      };
+      
       // Update route state in a single batch
       setRouteDistance(distance);
       setRouteDuration(durationMinutes);
       setRouteInstructions(instructions);
+      sendRouteToServer(routeData);
       
     } catch (error) {
       console.error('Error calculating route info:', error);
@@ -319,14 +327,17 @@ function App() {
       setRouteDuration(routeData.duration);
     }
     
-    // For instructions, we need to check if they're significantly different
-    // A simple approach is to check the array length
+    // Update instructions
     if (routeData.instructions && 
         (!routeInstructions || 
          routeInstructions.length !== routeData.instructions.length)) {
       setRouteInstructions(routeData.instructions);
     }
+    
+    // Send the route information to the server
+    sendRouteToServer(routeData);
   };
+  
 
   /**
    * Start location tracking
@@ -483,6 +494,59 @@ function App() {
       transportMode: transportMode
     };
   };
+
+  /**
+   * Send route information to the server
+   */
+  const sendRouteToServer = (routeData) => {
+    if (!socket || !connected) {
+      console.log('Cannot send route: socket not connected');
+      return;
+    }
+    
+    if (!startPoint || !endPoint) {
+      console.log('Cannot send route: missing start or end points');
+      return;
+    }
+    
+    // Validate route geometry
+    let routeGeometry = routeData?.routeGeometry;
+    if (!routeGeometry || !Array.isArray(routeGeometry) || routeGeometry.length < 2) {
+      console.log('Creating simple route geometry from start and end points');
+      routeGeometry = [startPoint, endPoint];
+    }
+    
+    console.log('Sending route information to server:', {
+      driverId,
+      startPoint,
+      endPoint,
+      pointsCount: routeGeometry.length
+    });
+    
+    // Prepare route data
+    const routeDataToSend = {
+      deviceID: driverId,
+      startPoint: startPoint,
+      endPoint: endPoint,
+      routeGeometry: routeGeometry,
+      transportMode: transportMode,
+      distance: routeData?.distance || routeDistance,
+      duration: routeData?.duration || routeDuration,
+      timestamp: Date.now()
+    };
+    
+    // Send to server
+    socket.emit('driverRoute', routeDataToSend);
+    
+    // Add event listener for server acknowledgement if not already listening
+    if (!socket._hasRouteAckListener) {
+      socket.on('routeAck', (ack) => {
+        console.log('Route acknowledgement received:', ack);
+      });
+      socket._hasRouteAckListener = true;
+    }
+  };
+
 
   // Render helper components
   const renderHeader = () => (
