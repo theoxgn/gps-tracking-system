@@ -4,12 +4,15 @@ import L from 'leaflet';
 import axios from 'axios';
 
 /**
- * Komponen untuk menampilkan rute lengkap di peta menggunakan OSRM
+ * Komponen untuk menampilkan rute lengkap di peta menggunakan GraphHopper atau OSRM
  * @param {Object} props - Component props
  * @param {Array} props.startPoint - Koordinat awal [lat, lng]
  * @param {Array} props.endPoint - Koordinat akhir [lat, lng]
  * @param {String} props.transportMode - Mode transportasi
  * @param {Boolean} props.preferTollRoads - Preferensi penggunaan jalan tol
+ * @param {Object} props.truckSpecs - Spesifikasi truk (tinggi, berat, dll)
+ * @param {Object} props.socket - Socket.io instance untuk komunikasi dengan server
+ * @param {String} props.driverId - ID driver
  * @param {Function} props.onRouteCalculated - Callback setelah kalkulasi rute (optional)
  */
 const DetailedRouteMap = ({ 
@@ -17,6 +20,9 @@ const DetailedRouteMap = ({
   endPoint, 
   transportMode = 'driving-car',
   preferTollRoads = true, // Default: prioritaskan jalan tol
+  truckSpecs = null,
+  socket = null,
+  driverId = null,
   onRouteCalculated = null
 }) => {
   // State untuk menyimpan rute
@@ -26,6 +32,7 @@ const DetailedRouteMap = ({
   const [truckWarnings, setTruckWarnings] = useState([]);
   const [isTruckRoute, setIsTruckRoute] = useState(false);
   const [usesToll, setUsesToll] = useState(false);
+  const [tollInfo, setTollInfo] = useState(null);
   
   // State untuk menyimpan rute alternatif (toll dan non-toll) - untuk ESLint
   const [availableRoutes, setAvailableRoutes] = useState({
@@ -51,6 +58,9 @@ const DetailedRouteMap = ({
   
   // Ref untuk map instance
   const map = useMap();
+
+  // Ref untuk menandai apakah GraphHopper request telah dikirim
+  const graphhopperRequestSent = useRef(false);
   
   // Efek untuk mendeteksi jika mode transportasi adalah truk
   useEffect(() => {
@@ -117,7 +127,7 @@ const DetailedRouteMap = ({
     // Penambahan peringatan informasi dasar
     warnings.push({
       type: 'info',
-      message: 'Rute ini menggunakan profile mobil dari OSRM karena API publik tidak mendukung profil truk. Durasi telah disesuaikan +30% untuk truk.',
+      message: 'Rute ini menggunakan profile mobil dari GraphHopper. Durasi telah disesuaikan +30% untuk truk.',
       severity: 'info'
     });
     
@@ -125,7 +135,7 @@ const DetailedRouteMap = ({
     if (usesToll) {
       warnings.push({
         type: 'toll',
-        message: 'Rute ini menggunakan jalan tol. Verifikasi biaya tol untuk golongan kendaraan Anda.',
+        message: 'Rute ini menggunakan jalan tol. Biaya tol berdasarkan golongan kendaraan Anda.',
         severity: 'info'
       });
     }
@@ -205,8 +215,158 @@ const DetailedRouteMap = ({
     return angleDeg;
   };
   
-  // Fungsi untuk mengambil rute dari OSRM - memoisasi untuk mencegah re-render
-  const fetchRoute = useCallback(async (start, end, mode, preferToll = true) => {
+  // Event handler untuk menerima respons rute dari GraphHopper
+  const handleGraphhopperResponse = useCallback((routeData) => {
+    console.log('Received GraphHopper route response:', routeData);
+    setIsLoading(false);
+    graphhopperRequestSent.current = false;
+    
+    if (!routeData || routeData.error) {
+      console.error('GraphHopper error:', routeData?.error || 'Unknown error');
+      setError(routeData?.error || 'Error calculating route');
+      
+      // Fallback ke rute OSRM jika GraphHopper gagal
+      console.log('Falling back to OSRM route calculation');
+      fetchOsrmRoute(startPoint, endPoint, transportMode, preferTollRoads);
+      return;
+    }
+    
+    // Set rute geometri
+    if (routeData.routeGeometry && routeData.routeGeometry.length > 0) {
+      setRouteGeometry(routeData.routeGeometry);
+      
+      // Sesuaikan peta untuk menampilkan seluruh rute
+      if (map) {
+        try {
+          const bounds = L.latLngBounds(routeData.routeGeometry);
+          map.fitBounds(bounds, { padding: [50, 50] });
+        } catch (e) {
+          console.error('Error fitting bounds:', e);
+        }
+      }
+    }
+    
+    // Set status penggunaan tol
+    const usesToll = routeData.tollInfo && routeData.tollInfo.usesToll;
+    setUsesToll(usesToll);
+    
+    // Set informasi biaya tol
+    if (usesToll) {
+      setTollInfo(routeData.tollInfo);
+    } else {
+      setTollInfo(null);
+    }
+    
+    // Generate peringatan untuk truk jika diperlukan
+    if (transportMode === 'driving-hgv') {
+      const warnings = [
+        ...detectTruckHazards(routeData.routeGeometry, usesToll)
+      ];
+      
+      // Tambahkan info biaya tol ke peringatan
+      if (usesToll && routeData.tollInfo && routeData.tollInfo.estimatedCost) {
+        warnings.push({
+          type: 'toll_cost',
+          message: `Estimasi biaya tol: Rp ${routeData.tollInfo.estimatedCost.toLocaleString('id-ID')} (Golongan ${getVehicleClassLabel(routeData.tollInfo.vehicleClass)})`,
+          severity: 'info'
+        });
+      }
+      
+      setTruckWarnings(warnings);
+    } else {
+      setTruckWarnings([]);
+    }
+    
+    // Set status rute sudah dihitung
+    routeCalculatedRef.current = true;
+    
+    // Panggil callback jika tersedia
+    if (onRouteCalculated) {
+      onRouteCalculated({
+        distance: routeData.distance,
+        duration: routeData.duration,
+        instructions: routeData.instructions || [],
+        routeGeometry: routeData.routeGeometry,
+        truckWarnings: transportMode === 'driving-hgv' ? truckWarnings : null,
+        usesToll: usesToll,
+        tollInfo: routeData.tollInfo || null
+      });
+    }
+  }, [startPoint, endPoint, transportMode, map, detectTruckHazards, truckWarnings, onRouteCalculated]);
+  
+  // Event handler untuk error dari GraphHopper
+  const handleGraphhopperError = useCallback((errorData) => {
+    console.error('GraphHopper route error:', errorData);
+    setIsLoading(false);
+    graphhopperRequestSent.current = false;
+    setError(errorData?.error || 'Error calculating route');
+    
+    // Fallback ke OSRM jika GraphHopper gagal
+    console.log('Falling back to OSRM route calculation');
+    fetchOsrmRoute(startPoint, endPoint, transportMode, preferTollRoads);
+  }, [startPoint, endPoint, transportMode, preferTollRoads]);
+  
+  // Setup socket event listeners untuk GraphHopper
+  useEffect(() => {
+    if (!socket) return;
+    
+    // Setup event listeners
+    socket.on('routeWithTollResponse', handleGraphhopperResponse);
+    socket.on('routeError', handleGraphhopperError);
+    
+    // Cleanup saat unmount
+    return () => {
+      socket.off('routeWithTollResponse', handleGraphhopperResponse);
+      socket.off('routeError', handleGraphhopperError);
+    };
+  }, [socket, handleGraphhopperResponse, handleGraphhopperError]);
+
+  // Fungsi untuk mengambil rute dari GraphHopper via socket
+  const fetchGraphhopperRoute = useCallback((start, end, mode, preferToll) => {
+    if (!socket || !socket.connected) {
+      console.log('Socket not connected, falling back to OSRM');
+      fetchOsrmRoute(start, end, mode, preferToll);
+      return;
+    }
+    
+    // Tandai bahwa request sedang dalam proses
+    graphhopperRequestSent.current = true;
+    setIsLoading(true);
+    setError(null);
+    
+    console.log('Requesting route from GraphHopper via socket:', {
+      startPoint: start, 
+      endPoint: end, 
+      mode, 
+      preferToll,
+      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null
+    });
+    
+    // Siapkan data untuk request
+    const routeRequest = {
+      deviceID: driverId || 'unknown',
+      startPoint: start,
+      endPoint: end,
+      transportMode: mode,
+      preferTollRoads: preferToll,
+      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null
+    };
+    
+    // Emit event ke server
+    socket.emit('requestRouteWithToll', routeRequest);
+    
+    // Set timeout untuk fallback ke OSRM jika tidak ada respons dalam 5 detik
+    setTimeout(() => {
+      if (graphhopperRequestSent.current) {
+        console.log('GraphHopper request timed out, falling back to OSRM');
+        graphhopperRequestSent.current = false;
+        fetchOsrmRoute(start, end, mode, preferToll);
+      }
+    }, 5000);
+  }, [socket, driverId, truckSpecs]);
+  
+  // Fungsi asli untuk mengambil rute dari OSRM jika GraphHopper gagal
+  const fetchOsrmRoute = useCallback(async (start, end, mode, preferToll = true) => {
     if (!start || !end) return;
     
     // Check if toll preference changed specifically
@@ -363,6 +523,9 @@ const DetailedRouteMap = ({
         routeCalculatedRef.current = true;
         setUsesToll(selectedRoute.hasToll);
         
+        // Reset toll info karena OSRM tidak memberikan biaya tol
+        setTollInfo(null);
+        
         // Sesuaikan peta untuk menampilkan seluruh rute
         if (selectedRoute.geometry.length > 0 && map) {
           try {
@@ -380,6 +543,31 @@ const DetailedRouteMap = ({
           setTruckWarnings(warnings);
         }
         
+        // Tambahkan estimasi biaya tol berdasarkan jarak dan golongan kendaraan
+        let estimatedTollInfo = null;
+        if (selectedRoute.hasToll) {
+          // Perkiraan jarak tol (50% dari total jarak)
+          const estimatedTollDistance = selectedRoute.distance * 0.5;
+          
+          // Perkiraan golongan kendaraan
+          const vehicleClass = mode === 'driving-hgv' ? 
+            getVehicleClassFromSpecs(truckSpecs) : 1;
+          
+          // Perkiraan biaya berdasarkan tarif per km
+          const ratePerKm = getTollRateForClass(vehicleClass);
+          const estimatedCost = Math.round(estimatedTollDistance * ratePerKm);
+          
+          estimatedTollInfo = {
+            usesToll: true,
+            vehicleClass: vehicleClass,
+            estimatedCost: estimatedCost,
+            tollDistance: estimatedTollDistance,
+            isEstimated: true
+          };
+          
+          setTollInfo(estimatedTollInfo);
+        }
+        
         // Panggil callback dengan hasil
         if (onRouteCalculated) {
           onRouteCalculated({
@@ -388,7 +576,8 @@ const DetailedRouteMap = ({
             instructions: selectedRoute.instructions,
             routeGeometry: selectedRoute.geometry,
             truckWarnings: mode === 'driving-hgv' ? warnings : null,
-            usesToll: selectedRoute.hasToll
+            usesToll: selectedRoute.hasToll,
+            tollInfo: estimatedTollInfo
           });
         }
       } else {
@@ -446,7 +635,20 @@ const DetailedRouteMap = ({
     } finally {
       setIsLoading(false);
     }
-  }, [checkIfRouteLikelyUsesToll, detectTruckHazards, map, onRouteCalculated]);
+  }, [checkIfRouteLikelyUsesToll, detectTruckHazards, map, onRouteCalculated, truckSpecs]);
+
+  // Main function to fetch route - decides whether to use GraphHopper or OSRM
+  const fetchRoute = useCallback((start, end, mode, preferToll = true) => {
+    if (!start || !end) return;
+    
+    // Coba GraphHopper dulu jika socket tersedia
+    if (socket && socket.connected) {
+      fetchGraphhopperRoute(start, end, mode, preferToll);
+    } else {
+      // Fallback ke OSRM jika socket tidak tersedia
+      fetchOsrmRoute(start, end, mode, preferToll);
+    }
+  }, [socket, fetchGraphhopperRoute, fetchOsrmRoute]);
 
   // Effect khusus untuk mengubah rute saat preferensi tol berubah
   useEffect(() => {
@@ -456,6 +658,14 @@ const DetailedRouteMap = ({
     if (!startPoint || !endPoint || !map) {
       return;
     }
+    
+    // Jika socket tersedia, minta rute baru dari GraphHopper
+    if (socket && socket.connected) {
+      fetchGraphhopperRoute(startPoint, endPoint, transportMode, preferTollRoads);
+      return;
+    }
+    
+    // Jika socket tidak tersedia, gunakan caching lokal untuk tol/non-tol
     
     // !! FIXING INFINITE LOOP !!
     // Use the REF for checking, not the state
@@ -485,6 +695,34 @@ const DetailedRouteMap = ({
       routeCalculatedRef.current = true;
       setUsesToll(selectedRoute.hasToll);
       
+      // Reset toll info karena OSRM tidak memberikan biaya tol
+      // Tambahkan estimasi biaya tol berdasarkan jarak dan golongan kendaraan
+      let estimatedTollInfo = null;
+      if (selectedRoute.hasToll) {
+        // Perkiraan jarak tol (50% dari total jarak)
+        const estimatedTollDistance = selectedRoute.distance * 0.5;
+        
+        // Perkiraan golongan kendaraan
+        const vehicleClass = transportMode === 'driving-hgv' ? 
+          getVehicleClassFromSpecs(truckSpecs) : 1;
+        
+        // Perkiraan biaya berdasarkan tarif per km
+        const ratePerKm = getTollRateForClass(vehicleClass);
+        const estimatedCost = Math.round(estimatedTollDistance * ratePerKm);
+        
+        estimatedTollInfo = {
+          usesToll: true,
+          vehicleClass: vehicleClass,
+          estimatedCost: estimatedCost,
+          tollDistance: estimatedTollDistance,
+          isEstimated: true
+        };
+        
+        setTollInfo(estimatedTollInfo);
+      } else {
+        setTollInfo(null);
+      }
+      
       // Generate truck warnings if needed
       let warnings = [];
       if (transportMode === 'driving-hgv') {
@@ -500,7 +738,8 @@ const DetailedRouteMap = ({
           instructions: selectedRoute.instructions,
           routeGeometry: selectedRoute.geometry,
           truckWarnings: transportMode === 'driving-hgv' ? warnings : null,
-          usesToll: selectedRoute.hasToll
+          usesToll: selectedRoute.hasToll,
+          tollInfo: estimatedTollInfo
         });
       }
     } else {
@@ -510,7 +749,7 @@ const DetailedRouteMap = ({
     }
     
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preferTollRoads, startPoint, endPoint, map, transportMode, fetchRoute, detectTruckHazards, onRouteCalculated]); 
+  }, [preferTollRoads, startPoint, endPoint, map, transportMode, socket, detectTruckHazards, onRouteCalculated]); 
   // DO NOT add availableRoutes here - it would cause infinite loops!
 
   // Jalankan fetchRoute saat komponen mount atau props berubah
@@ -603,8 +842,8 @@ const DetailedRouteMap = ({
         </div>
       )}
       
-      {/* Tampilkan indikator jalan tol jika rute menggunakan tol */}
-      {usesToll && !isTruckRoute && (
+      {/* Tampilkan informasi biaya tol jika tersedia */}
+      {usesToll && tollInfo && !isTruckRoute && (
         <div style={{
           position: 'absolute',
           bottom: '20px',
@@ -616,17 +855,17 @@ const DetailedRouteMap = ({
           zIndex: 1000,
           maxWidth: '300px',
           boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          fontSize: '14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
+          fontSize: '14px'
         }}>
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
-            <line x1="4" y1="22" x2="4" y2="15"></line>
-          </svg>
-          <div>
-            Rute menggunakan jalan tol
+          <div style={{ fontWeight: 'bold', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+              <line x1="4" y1="22" x2="4" y2="15"></line>
+            </svg>
+            Biaya Tol: Rp {tollInfo.estimatedCost.toLocaleString('id-ID')}
+          </div>
+          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+            Jarak: {tollInfo.tollDistance.toFixed(1)} km (Golongan {getVehicleClassLabel(tollInfo.vehicleClass)})
           </div>
         </div>
       )}
@@ -832,6 +1071,50 @@ const generateBasicInstructions = (startPoint, endPoint, mode) => {
       modifier: 'straight'
     }
   ];
+};
+
+/**
+ * Get toll rate per kilometer based on vehicle class
+ */
+const getTollRateForClass = (vehicleClass) => {
+  // Tarif rata-rata per km di jalan tol Indonesia (Rp)
+  switch (vehicleClass) {
+    case 1: return 900;   // Golongan I: sedan, jip, pick up, truk kecil
+    case 2: return 1350;  // Golongan II: truk dengan 2 gandar
+    case 3: return 1800;  // Golongan III: truk dengan 3 gandar
+    case 4: return 2250;  // Golongan IV: truk dengan 4 gandar
+    case 5: return 2700;  // Golongan V: truk dengan 5 gandar atau lebih
+    default: return 900;
+  }
+};
+
+/**
+ * Get vehicle class from truck specifications
+ */
+const getVehicleClassFromSpecs = (truckSpecs) => {
+  if (!truckSpecs) return 2; // Default Golongan II
+  
+  const { axles } = truckSpecs;
+  if (axles === 2) return 2; // Golongan II
+  if (axles === 3) return 3; // Golongan III
+  if (axles === 4) return 4; // Golongan IV
+  if (axles >= 5) return 5; // Golongan V
+  
+  return 2; // Default Golongan II
+};
+
+/**
+ * Convert vehicle class to label
+ */
+const getVehicleClassLabel = (vehicleClass) => {
+  switch(vehicleClass) {
+    case 1: return "I";
+    case 2: return "II";
+    case 3: return "III";
+    case 4: return "IV";
+    case 5: return "V";
+    default: return vehicleClass.toString();
+  }
 };
 
 // Tambahkan animasi spinning untuk loading indicator

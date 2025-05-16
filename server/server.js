@@ -7,6 +7,11 @@ const fs = require("fs");
 const path = require("path");
 const config = require("./config");
 const { v4: uuidv4 } = require('uuid'); // Tambahkan untuk keperluan ID pesan chat
+const axios = require('axios'); // Tambahkan untuk GraphHopper API
+
+// GraphHopper API configuration
+const GRAPHHOPPER_API_KEY = '0086de71-3a18-474a-a401-139651689d1f';
+const GRAPHHOPPER_API_URL = 'https://graphhopper.com/api/1/route';
 
 // Create Express application
 const app = express();
@@ -223,81 +228,96 @@ app.get("/", (req, res) => {
   }).status(200);
 });
 
-// API to get all active drivers
-app.get("/api/drivers", (req, res) => {
-  res.json({ drivers: activeDrivers });
-});
-
-// API to get specific driver data
-app.get("/api/drivers/:driverId", (req, res) => {
-  const driverId = req.params.driverId;
-  
-  if (!activeDrivers[driverId]) {
-    return res.status(404).json({ error: "Driver not found" });
-  }
-  
-  res.json({ driver: activeDrivers[driverId] });
-});
-
-// API untuk menghitung biaya tol berdasarkan gerbang masuk, keluar, dan jenis kendaraan
-const { calculateTollCost } = require("./tollgateModel");
-app.get("/api/calculate-toll", (req, res) => {
-  /**
-   * Endpoint untuk menghitung biaya tol
-   * Query: startGate, endGate, vehicleType
-   */
-  const { startGate, endGate, vehicleType } = req.query;
-  if (!startGate || !endGate || !vehicleType) {
-    return res.status(400).json({ error: "Parameter startGate, endGate, dan vehicleType wajib diisi" });
-  }
-  const cost = calculateTollCost(startGate, endGate, vehicleType);
-  if (cost === null) {
-    return res.status(404).json({ error: "Data biaya tol tidak ditemukan untuk kombinasi tersebut" });
-  }
-  res.json({ startGate, endGate, vehicleType, cost });
-});
-
-// API to get driver history for a specific time period
-app.get("/api/history/:driverId", (req, res) => {
-  const driverId = req.params.driverId;
-  const { start, end } = req.query;
-  
-  if (!driverHistory[driverId]) {
-    return res.status(404).json({ error: "No history found for this driver" });
-  }
-  
-  let history = driverHistory[driverId];
-  
-  // Filter by time if provided
-  if (start && end) {
-    const startTime = new Date(start).getTime() / 1000;
-    const endTime = new Date(end).getTime() / 1000;
-    
-    history = history.filter(entry => 
-      entry.timestamp >= startTime && entry.timestamp <= endTime
-    );
-  }
-  
-  res.json({ history });
-});
-
-// API untuk mengambil riwayat chat
-app.get("/api/chat/:driverId", authenticateAPI, (req, res) => {
-  const driverId = req.params.driverId;
-  
-  if (!chatHistory[driverId]) {
-    return res.status(200).json({ messages: [] });
-  }
-  
-  const limit = parseInt(req.query.limit) || 50;
-  const messages = chatHistory[driverId].slice(-limit);
-  
-  res.json({ messages });
-});
 
 // Simple health check
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
+});
+
+// GraphHopper Route API endpoint
+app.get("/api/route", async (req, res) => {
+  try {
+    const { 
+      startLat, startLng, 
+      endLat, endLng, 
+      profile = 'car',
+      truckSpecs = null,
+      preferToll = true
+    } = req.query;
+    
+    // Validasi input
+    if (!startLat || !startLng || !endLat || !endLng) {
+      return res.status(400).json({ error: "Missing required coordinates" });
+    }
+    
+    console.log(`Calculating route from [${startLat},${startLng}] to [${endLat},${endLng}] using ${profile} profile`);
+    
+    // Siapkan parameter untuk GraphHopper
+    const params = {
+      point: [`${startLng},${startLat}`, `${endLng},${endLat}`],
+      profile: profile || 'car',
+      details: ["road_class", "toll", "surface"],
+      instructions: true,
+      calc_points: true,
+      points_encoded: false,
+      locale: "id",
+      key: GRAPHHOPPER_API_KEY
+    };
+    
+    // Tambahkan parameter khusus truk jika ada
+    if (profile === 'truck' && truckSpecs) {
+      try {
+        const specs = typeof truckSpecs === 'string' ? JSON.parse(truckSpecs) : truckSpecs;
+        
+        Object.assign(params, {
+          "vehicle.height": specs.height,
+          "vehicle.weight": specs.weight * 1000, // konversi ke kg
+          "vehicle.width": specs.width,
+          "vehicle.length": specs.length,
+          "vehicle.axles": specs.axles
+        });
+        
+        console.log("Added truck specifications:", specs);
+      } catch (error) {
+        console.error("Failed to parse truck specs:", error);
+      }
+    }
+    
+    // Tambahkan opsi hindari tol jika diminta
+    if (!preferToll) {
+      // GraphHopper menggunakan custom model untuk menghindari tol
+      Object.assign(params, {
+        "ch.disable": true,
+        "custom_model": JSON.stringify({
+          "priority": [
+            {
+              "if": "road_class == TOLL",
+              "multiply_by": 0.1 // Prioritas rendah untuk jalan tol
+            }
+          ]
+        })
+      });
+      
+      console.log("Added preference to avoid toll roads");
+    }
+    
+    // Panggil API GraphHopper
+    const response = await axios.get(GRAPHHOPPER_API_URL, { params });
+    
+    // Proses hasilnya dan tambahkan estimasi biaya tol
+    if (response.data && response.data.paths && response.data.paths.length > 0) {
+      const result = processRouteResponse(response.data, profile);
+      return res.json(result);
+    } else {
+      return res.status(404).json({ error: "No route found" });
+    }
+  } catch (error) {
+    console.error("GraphHopper API error:", error.response?.data || error.message);
+    return res.status(500).json({
+      error: "Error calculating route",
+      details: error.response?.data || error.message
+    });
+  }
 });
 
 // Driver connection authentication middleware
@@ -462,6 +482,60 @@ io.on("connection", (socket) => {
       socket.emit("driverRouteUpdate", {
         deviceID: data.driverId,
         hasRouteData: false
+      });
+    }
+  });
+
+  // Handle new request for route with toll information
+  socket.on("requestRouteWithToll", async (data) => {
+    // Validasi data
+    if (!data || !data.startPoint || !data.endPoint) {
+      socket.emit("routeError", { error: "Invalid route request data" });
+      return;
+    }
+    
+    try {
+      // Persiapkan parameter untuk permintaan rute
+      const params = {
+        startLat: data.startPoint[0],
+        startLng: data.startPoint[1],
+        endLat: data.endPoint[0],
+        endLng: data.endPoint[1],
+        profile: mapTransportModeToProfile(data.transportMode || 'driving-car'),
+        preferToll: data.preferTollRoads !== false // Default ke true jika tidak disediakan
+      };
+      
+      // Tambahkan spesifikasi truk jika disediakan
+      if (data.transportMode === 'driving-hgv' && data.truckSpecs) {
+        params.truckSpecs = data.truckSpecs;
+      }
+      
+      // Panggil API internal
+      const response = await axios.get(`http://localhost:${config.server.port}/api/route`, { params });
+      
+      // Transformasi respons untuk sesuai dengan format yang diharapkan
+      const routeData = transformGraphhopperResponse(response.data, data);
+      
+      // Simpan rute dengan informasi tol
+      if (data.deviceID) {
+        driverRoutes[data.deviceID] = {
+          ...routeData,
+          deviceID: data.deviceID,
+          timestamp: Date.now()
+        };
+        
+        // Notifikasi monitor baru tentang perubahan rute
+        io.to(Object.values(connectedClients.monitors)).emit("driverRouteUpdate", driverRoutes[data.deviceID]);
+      }
+      
+      // Kirim kembali ke pengirim
+      socket.emit("routeWithTollResponse", routeData);
+      
+    } catch (error) {
+      console.error("Error processing route with toll request:", error);
+      socket.emit("routeError", {
+        error: "Failed to process route request",
+        details: error.message
       });
     }
   });
@@ -686,6 +760,155 @@ io.on("connection", (socket) => {
   });
 });
 
+// Helper function to convert transport mode to GraphHopper profile
+function mapTransportModeToProfile(mode) {
+  switch (mode) {
+    case 'driving-car': return 'car';
+    case 'driving-hgv': return 'truck';
+    case 'cycling-regular': return 'bike';
+    case 'foot-walking': return 'foot';
+    default: return 'car';
+  }
+}
+
+// Function to process route response and add toll cost estimation
+function processRouteResponse(routeData, profile) {
+  const path = routeData.paths[0];
+  const usesToll = path.details && path.details.toll && path.details.toll.length > 0;
+  
+  // Jika tidak menggunakan tol, tidak perlu hitung biaya
+  if (!usesToll) {
+    return {
+      ...routeData,
+      toll_info: {
+        usesToll: false
+      }
+    };
+  }
+  
+  // Hitung total jarak tol
+  let tollDistance = 0;
+  let tollSegments = [];
+  
+  if (path.details && path.details.toll) {
+    for (const tollSegment of path.details.toll) {
+      const startIndex = tollSegment[0];
+      const endIndex = tollSegment[1];
+      
+      // Hitung jarak untuk segmen tol ini
+      const segmentPoints = path.points.coordinates.slice(startIndex, endIndex + 1);
+      let segmentDistance = 0;
+      
+      for (let i = 0; i < segmentPoints.length - 1; i++) {
+        const p1 = segmentPoints[i];
+        const p2 = segmentPoints[i + 1];
+        segmentDistance += calculateDistance(
+          [p1[1], p1[0]], // [lat, lng]
+          [p2[1], p2[0]]  // [lat, lng]
+        );
+      }
+      
+      tollDistance += segmentDistance;
+      
+      // Identifikasi segmen tol (untuk debugging dan detail)
+      tollSegments.push({
+        start_idx: startIndex,
+        end_idx: endIndex,
+        distance: segmentDistance
+      });
+    }
+  }
+  
+  // Estimasi biaya tol berdasarkan kelas kendaraan dan jarak
+  const vehicleClass = getVehicleClass(profile);
+  const tollRate = getTollRateForClass(vehicleClass);
+  const estimatedCost = Math.round(tollDistance * tollRate / 1000); // Konversi m ke km
+  
+  // Tambahkan informasi tol ke respons
+  return {
+    ...routeData,
+    toll_info: {
+      usesToll: true,
+      tollDistance: tollDistance / 1000, // km
+      vehicleClass: vehicleClass,
+      estimatedCost: estimatedCost,
+      currency: "IDR",
+      segments: tollSegments,
+      note: "Estimasi biaya berdasarkan tarif rata-rata per kilometer"
+    }
+  };
+}
+
+// Transform GraphHopper response to application's expected format
+function transformGraphhopperResponse(graphhopperData, originalRequest) {
+  if (!graphhopperData.paths || !graphhopperData.paths[0]) {
+    return { error: "No route data available" };
+  }
+  
+  const path = graphhopperData.paths[0];
+  
+  // Konversi koordinat (dari [lng, lat] ke [lat, lng] untuk Leaflet)
+  const routeGeometry = path.points.coordinates.map(coord => [coord[1], coord[0]]);
+  
+  // Ekstrak instruksi rute
+  const instructions = path.instructions ? path.instructions.map(instr => ({
+    instruction: instr.text,
+    distance: instr.distance,
+    duration: instr.time / 1000, // konversi ms ke detik
+    type: instr.sign, // GraphHopper menggunakan tanda untuk jenis instruksi
+    modifier: ''
+  })) : [];
+  
+  // Buat respons yang sesuai dengan format aplikasi
+  return {
+    startPoint: originalRequest.startPoint,
+    endPoint: originalRequest.endPoint,
+    routeGeometry: routeGeometry,
+    transportMode: originalRequest.transportMode || 'driving-car',
+    distance: path.distance / 1000, // konversi m ke km
+    duration: Math.round(path.time / 60000), // konversi ms ke menit
+    instructions: instructions,
+    tollInfo: graphhopperData.toll_info || {
+      usesToll: false
+    },
+    deviceID: originalRequest.deviceID
+  };
+}
+
+// Helper untuk menentukan golongan kendaraan
+function getVehicleClass(profile) {
+  if (profile === 'car') return 1; // Golongan I
+  if (profile === 'truck') return 2; // Default Golongan II untuk truk
+  return 1; // Default
+}
+
+// Helper untuk mendapatkan tarif tol per km berdasarkan golongan
+function getTollRateForClass(vehicleClass) {
+  // Tarif rata-rata per km di jalan tol Indonesia (Rp)
+  // Ini estimasi kasar, sebaiknya data sebenarnya diambil dari database
+  switch (vehicleClass) {
+    case 1: return 900;   // Golongan I: sedan, jip, pick up, truk kecil
+    case 2: return 1350;  // Golongan II: truk dengan 2 gandar
+    case 3: return 1800;  // Golongan III: truk dengan 3 gandar
+    case 4: return 2250;  // Golongan IV: truk dengan 4 gandar
+    case 5: return 2700;  // Golongan V: truk dengan 5 gandar atau lebih
+    default: return 900;
+  }
+}
+
+// Helper function untuk menghitung jarak antara dua titik (dalam meter)
+function calculateDistance(point1, point2) {
+  const R = 6371000; // radius bumi dalam meter
+  const dLat = (point2[0] - point1[0]) * Math.PI / 180;
+  const dLon = (point2[1] - point1[1]) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(point1[0] * Math.PI / 180) * Math.cos(point2[0] * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2); 
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+  return R * c;
+}
+
 // Clean up inactive drivers periodically
 const cleanupInactiveDrivers = () => {
   const now = Date.now() / 1000;
@@ -729,63 +952,6 @@ const cleanupInactiveDrivers = () => {
 // Run cleanup every 5 minutes
 setInterval(cleanupInactiveDrivers, 5 * 60 * 1000);
 
-// Function to load sample data from file
-const loadSampleData = () => {
-  try {
-    // Try to load the sample data file if exists
-    const sampleDataFile = path.join(__dirname, './sample-data/gpsData.json');
-    if (fs.existsSync(sampleDataFile)) {
-      return JSON.parse(fs.readFileSync(sampleDataFile, 'utf8'));
-    }
-  } catch (err) {
-    console.error('Error loading sample data:', err);
-  }
-  
-  return null;
-};
-
-// Sample data sender for testing/demonstration
-const enableSampleData = process.env.ENABLE_SAMPLE_DATA === 'true';
-let sampleDataCounter = 0;
-let sampleData = null;
-
-if (enableSampleData) {
-  sampleData = loadSampleData();
-  
-  if (sampleData && sampleData.gpsData && sampleData.gpsData.length > 0) {
-    console.log(`Loaded ${sampleData.gpsData.length} sample GPS points for demonstration`);
-    
-    // Send sample data every 1 second
-    setInterval(() => {
-      if (sampleDataCounter >= sampleData.gpsData.length) {
-        sampleDataCounter = 0;
-      }
-      
-      const data = sampleData.gpsData[sampleDataCounter++];
-      data.timestamp = Math.floor(Date.now() / 1000);
-      
-      io.emit("driverData", data);
-      console.log(`Sent sample data point ${sampleDataCounter}/${sampleData.gpsData.length}`);
-    }, config.app.locationUpdateInterval);
-  } else {
-    console.log('No sample data found or invalid format, disabling sample data');
-  }
-}
-
-// Endpoint API untuk mengambil seluruh data gerbang tol Trans Jawa beserta tarif sesuai golongan kendaraan
-const tollgateModel = require('./tollgateModel');
-
-/**
- * Mengembalikan seluruh data gerbang tol Trans Jawa
- */
-app.get('/api/toll-gates', (req, res) => {
-  // Ambil parameter golongan kendaraan dari query string, misal: gol1, gol2, dst
-  const vehicleClass = req.query.vehicleClass;
-  const tollgates = tollgateModel.getAllTollgates(vehicleClass);
-  res.json(tollgates);
-});
-
-
 // Start the server
 server.listen(config.server.port, config.server.host, () => {
   console.log(`
@@ -796,7 +962,7 @@ server.listen(config.server.port, config.server.host, () => {
 ║ URL       : http${config.security.useSecureWebSockets ? 's' : ''}://${config.server.host}:${config.server.port} ║
 ║ Time      : ${new Date().toISOString()}          ║
 ║ Log Dir   : ${config.storage.logDirectory}                                 ║
-║ Demo Mode : ${enableSampleData ? 'Enabled' : 'Disabled'}                                 ║
+║ Demo Mode : ${typeof enableSampleData !== 'undefined' ? (enableSampleData ? 'Enabled' : 'Disabled') : 'Disabled'}                                 ║
 ║ Chat      : ${config.chat && config.chat.enabled ? 'Enabled' : 'Disabled'}                                 ║
 ╚════════════════════════════════════════════════════════╝
   `);
