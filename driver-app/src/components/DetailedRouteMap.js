@@ -841,6 +841,34 @@ const DetailedRouteMap = ({
           </ul>
         </div>
       )}
+
+      {/* Panel Khusus Biaya Tol untuk Truk */}
+      {isTruckRoute && usesToll && tollInfo && (
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '340px',
+          backgroundColor: 'rgba(49, 130, 206, 0.9)',
+          color: 'white',
+          padding: '10px 15px',
+          borderRadius: '8px',
+          zIndex: 1000,
+          maxWidth: '300px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          fontSize: '14px'
+        }}>
+          <div style={{ fontWeight: 'bold', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+              <line x1="4" y1="22" x2="4" y2="15"></line>
+            </svg>
+            Biaya Tol: Rp {tollInfo.estimatedCost.toLocaleString('id-ID')}
+          </div>
+          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+            Jarak: {tollInfo.tollDistance.toFixed(1)} km (Golongan {getVehicleClassLabel(tollInfo.vehicleClass)})
+          </div>
+        </div>
+      )}
       
       {/* Tampilkan informasi biaya tol jika tersedia */}
       {usesToll && tollInfo && !isTruckRoute && (
