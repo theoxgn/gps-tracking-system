@@ -1,8 +1,7 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useMap, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import axios from 'axios';
-import { getDefaultTruckSpecs } from '../services/osmRouteService';
 
 /**
  * Komponen untuk menampilkan rute lengkap di peta menggunakan OSRM
@@ -10,12 +9,14 @@ import { getDefaultTruckSpecs } from '../services/osmRouteService';
  * @param {Array} props.startPoint - Koordinat awal [lat, lng]
  * @param {Array} props.endPoint - Koordinat akhir [lat, lng]
  * @param {String} props.transportMode - Mode transportasi
+ * @param {Boolean} props.preferTollRoads - Preferensi penggunaan jalan tol
  * @param {Function} props.onRouteCalculated - Callback setelah kalkulasi rute (optional)
  */
 const DetailedRouteMap = ({ 
   startPoint, 
   endPoint, 
   transportMode = 'driving-car',
+  preferTollRoads = true, // Default: prioritaskan jalan tol
   onRouteCalculated = null
 }) => {
   // State untuk menyimpan rute
@@ -24,9 +25,28 @@ const DetailedRouteMap = ({
   const [error, setError] = useState(null);
   const [truckWarnings, setTruckWarnings] = useState([]);
   const [isTruckRoute, setIsTruckRoute] = useState(false);
+  const [usesToll, setUsesToll] = useState(false);
+  
+  // State untuk menyimpan rute alternatif (toll dan non-toll) - untuk ESLint
+  const [availableRoutes, setAvailableRoutes] = useState({
+    tollRoute: null,
+    nonTollRoute: null
+  });
   
   // Gunakan ref untuk mencegah perhitungan ulang yang tidak perlu
-  const prevPropsRef = useRef({ startPoint, endPoint, transportMode });
+  const prevPropsRef = useRef({ 
+    startPoint, 
+    endPoint, 
+    transportMode, 
+    preferTollRoads 
+  });
+  
+  // Ref untuk menyimpan rute alternatif - untuk menghindari infinite loop
+  const availableRoutesRef = useRef({
+    tollRoute: null,
+    nonTollRoute: null
+  });
+  
   const routeCalculatedRef = useRef(false);
   
   // Ref untuk map instance
@@ -37,173 +57,62 @@ const DetailedRouteMap = ({
     setIsTruckRoute(transportMode === 'driving-hgv');
   }, [transportMode]);
 
-  // Fungsi untuk mengambil rute dari OSRM
-  const fetchRoute = async (start, end, mode) => {
-    if (!start || !end) return;
+  /**
+   * Periksa apakah rute kemungkinan menggunakan jalan tol
+   * @param {Object} route - Data rute dari OSRM
+   * @returns {Boolean} - Apakah rute menggunakan tol
+   */
+  const checkIfRouteLikelyUsesToll = useCallback((route) => {
+    if (!route || !route.legs || !route.legs.length) return false;
     
-    // Skip jika tidak ada perubahan input
-    const propsChanged = 
-      !prevPropsRef.current.startPoint ||
-      !prevPropsRef.current.endPoint ||
-      prevPropsRef.current.startPoint[0] !== start[0] ||
-      prevPropsRef.current.startPoint[1] !== start[1] ||
-      prevPropsRef.current.endPoint[0] !== end[0] ||
-      prevPropsRef.current.endPoint[1] !== end[1] ||
-      prevPropsRef.current.transportMode !== mode;
+    let hasTollRoad = false;
     
-    if (!propsChanged && routeCalculatedRef.current) {
-      console.log('Skipping route calculation - inputs unchanged');
-      return;
+    // Cek di instruksi dan nama jalan
+    for (const leg of route.legs) {
+      if (!leg.steps || !leg.steps.length) continue;
+      
+      for (const step of leg.steps) {
+        const name = step.name?.toLowerCase() || '';
+        
+        // Cek apakah nama jalan mengandung kata kunci tol
+        if (name.includes('tol') || 
+            name.includes('highway') || 
+            name.includes('motorway') ||
+            name.includes('jalan bebas hambatan') ||
+            name.includes('exit') || // Biasanya exit dari jalan tol
+            name.includes('toll')) {
+          hasTollRoad = true;
+          break;
+        }
+      }
+      
+      if (hasTollRoad) break;
     }
     
-    // Perbarui ref
-    prevPropsRef.current = { 
-      startPoint: start ? [...start] : null, 
-      endPoint: end ? [...end] : null, 
-      transportMode: mode 
-    };
-    
-    setIsLoading(true);
-    setError(null);
-    setTruckWarnings([]);
-    
-    try {
-      // OSRM mengharapkan format [lng, lat], bukan [lat, lng]
-      const startCoord = `${start[1]},${start[0]}`; 
-      const endCoord = `${end[1]},${end[0]}`;
+    // Jika belum terdeteksi, cek ciri-ciri rute tol (biasanya lebih cepat dengan jarak yang jauh)
+    if (!hasTollRoad) {
+      const distance = route.distance / 1000; // km
+      const duration = route.duration / 60; // menit
       
-      // Map transportMode ke profile OSRM
-      const profile = mapTransportModeToOsrmProfile(mode);
-      
-      // Tambahkan parameter khusus untuk truk
-      const extraParams = mode === 'driving-hgv' ? {
-        // radiuses: -1,
-        continue_straight: true
-      } : {};
-      
-      // Buat URL untuk request OSRM public API
-      const osrmUrl = `https://router.project-osrm.org/route/v1/${profile}/${startCoord};${endCoord}`;
-      
-      console.log('Fetching OSRM route for mode:', mode);
-      
-      const response = await axios.get(osrmUrl, {
-        params: {
-          alternatives: false,
-          steps: true,
-          geometries: 'geojson',
-          overview: 'full',
-          annotations: 'true',
-          ...extraParams
+      // Jika rute cukup jauh (>10km) dan rata-rata kecepatan > 70 km/h, kemungkinan menggunakan tol
+      if (distance > 10 && duration > 0) {
+        const avgSpeed = distance / (duration / 60); // km/h
+        if (avgSpeed > 70) {
+          hasTollRoad = true;
         }
-      });
-      
-      // Periksa data valid
-      if (response.data && 
-          response.data.routes && 
-          response.data.routes.length > 0 &&
-          response.data.routes[0].geometry) {
-        
-        // Extract geometry (koordinat dari rute)
-        const route = response.data.routes[0];
-        const geometry = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
-        
-        setRouteGeometry(geometry);
-        routeCalculatedRef.current = true;
-        
-        // Sesuaikan peta untuk menampilkan seluruh rute - delay untuk memastikan DOM diperbarui
-        setTimeout(() => {
-          if (geometry.length > 0 && map) {
-            try {
-              const bounds = L.latLngBounds(geometry);
-              map.fitBounds(bounds, { padding: [50, 50] });
-            } catch (e) {
-              console.error('Error fitting bounds:', e);
-            }
-          }
-        }, 100);
-        
-        // Generate instruksi rute dari steps
-        const instructions = extractRouteInstructions(route);
-        
-        // Dapatkan durasi dan jarak asli
-        let distance = route.distance / 1000; // Convert to km
-        let duration = Math.round(route.duration / 60); // Convert to minutes
-        
-        // Post-processing untuk rute truk
-        if (mode === 'driving-hgv') {
-          // Sesuaikan durasi untuk truk (30% lebih lama)
-          const truckDuration = Math.round(duration * 1.3);
-          
-          // Generate peringatan untuk rute truk
-          const warnings = detectTruckHazards(geometry);
-          setTruckWarnings(warnings);
-          
-          // Perbarui durasi jika mode adalah truck
-          duration = truckDuration;
-        }
-        
-        // Panggil callback dengan hasil
-        if (onRouteCalculated) {
-          onRouteCalculated({
-            distance: distance,
-            duration: duration,
-            instructions: instructions,
-            routeGeometry: geometry,
-            truckWarnings: mode === 'driving-hgv' ? truckWarnings : null
-          });
-        }
-      } else {
-        throw new Error('Invalid route data from OSRM');
       }
-    } catch (err) {
-      console.error('Error fetching OSRM route:', err);
-      setError(err.message);
-      
-      // Jika OSRM gagal, gunakan perhitungan jarak sederhana sebagai fallback
-      const simpleDistance = calculateDistance(start, end);
-      const avgSpeedKmh = mode === 'driving-hgv' ? 40 : 50; // Truck lebih lambat
-      const durationMinutes = Math.round((simpleDistance / avgSpeedKmh) * 60);
-      
-      // Buat garis lurus sebagai fallback
-      setRouteGeometry([start, end]);
-      
-      // Generate instruksi navigasi sederhana
-      const simpleInstructions = generateBasicInstructions(start, end, mode);
-      
-      // Tambahkan peringatan untuk truk jika modenya truck
-      if (mode === 'driving-hgv') {
-        setTruckWarnings([{
-          type: 'fallback',
-          message: 'Menggunakan rute sederhana karena tidak bisa mendapatkan rute detail. Harap verifikasi kesesuaian rute untuk kendaraan besar.',
-          severity: 'warning'
-        }]);
-      }
-      
-      // Panggil callback dengan hasil sederhana
-      if (onRouteCalculated) {
-        onRouteCalculated({
-          distance: simpleDistance,
-          duration: durationMinutes,
-          instructions: simpleInstructions,
-          routeGeometry: [start, end],
-          truckWarnings: mode === 'driving-hgv' ? truckWarnings : null
-        });
-      }
-    } finally {
-      setIsLoading(false);
     }
-  };
+    
+    return hasTollRoad;
+  }, []);
 
   // Deteksi potensi bahaya untuk truk
-  const detectTruckHazards = (routeGeometry) => {
+  const detectTruckHazards = useCallback((routeGeometry, usesToll) => {
     const warnings = [];
     
     if (!routeGeometry || routeGeometry.length < 3) {
       return warnings;
     }
-    
-    // Default truck specs
-    const truckSpecs = getDefaultTruckSpecs();
     
     // Penambahan peringatan informasi dasar
     warnings.push({
@@ -211,6 +120,15 @@ const DetailedRouteMap = ({
       message: 'Rute ini menggunakan profile mobil dari OSRM karena API publik tidak mendukung profil truk. Durasi telah disesuaikan +30% untuk truk.',
       severity: 'info'
     });
+    
+    // Tambahkan informasi tentang penggunaan tol
+    if (usesToll) {
+      warnings.push({
+        type: 'toll',
+        message: 'Rute ini menggunakan jalan tol. Verifikasi biaya tol untuk golongan kendaraan Anda.',
+        severity: 'info'
+      });
+    }
     
     // Cek tiap 3 titik berurutan untuk mendeteksi tikungan tajam
     let sharpTurnCount = 0;
@@ -252,12 +170,12 @@ const DetailedRouteMap = ({
     // Tambahkan peringatan tentang kemungkinan hambatan
     warnings.push({
       type: 'dimensions',
-      message: `Verifikasi batasan tinggi (${truckSpecs.height}m), berat (${truckSpecs.weight}t), dan lebar (${truckSpecs.width}m) di sepanjang rute`,
+      message: `Verifikasi batasan tinggi, berat, dan lebar di sepanjang rute`,
       severity: 'medium'
     });
     
     return warnings;
-  };
+  }, []);
 
   /**
    * Menghitung sudut antara 3 titik dalam derajat
@@ -286,6 +204,314 @@ const DetailedRouteMap = ({
     
     return angleDeg;
   };
+  
+  // Fungsi untuk mengambil rute dari OSRM - memoisasi untuk mencegah re-render
+  const fetchRoute = useCallback(async (start, end, mode, preferToll = true) => {
+    if (!start || !end) return;
+    
+    // Check if toll preference changed specifically
+    const tollPreferenceChanged = prevPropsRef.current.preferTollRoads !== preferToll;
+    
+    // Skip jika tidak ada perubahan input
+    const propsChanged = 
+      !prevPropsRef.current.startPoint ||
+      !prevPropsRef.current.endPoint ||
+      prevPropsRef.current.startPoint[0] !== start[0] ||
+      prevPropsRef.current.startPoint[1] !== start[1] ||
+      prevPropsRef.current.endPoint[0] !== end[0] ||
+      prevPropsRef.current.endPoint[1] !== end[1] ||
+      prevPropsRef.current.transportMode !== mode;
+    
+    // Only skip if absolutely nothing changed
+    if (!propsChanged && !tollPreferenceChanged && routeCalculatedRef.current) {
+      console.log('Skipping route calculation - inputs unchanged');
+      return;
+    }
+    
+    // Perbarui ref dengan semua nilai termasuk preferensi tol
+    prevPropsRef.current = { 
+      startPoint: start ? [...start] : null, 
+      endPoint: end ? [...end] : null, 
+      transportMode: mode,
+      preferTollRoads: preferToll
+    };
+    
+    setIsLoading(true);
+    setError(null);
+    setTruckWarnings([]);
+    
+    try {
+      // OSRM mengharapkan format [lng, lat], bukan [lat, lng]
+      const startCoord = `${start[1]},${start[0]}`; 
+      const endCoord = `${end[1]},${end[0]}`;
+      
+      // Map transportMode ke profile OSRM
+      const profile = mapTransportModeToOsrmProfile(mode);
+      
+      // Tambahkan parameter khusus untuk truk, hanya parameter yang didukung OSRM
+      const extraParams = mode === 'driving-hgv' ? {
+        continue_straight: true // Hanya parameter ini yang valid di OSRM public API
+      } : {};
+      
+      // Buat URL untuk request OSRM public API
+      const osrmUrl = `https://router.project-osrm.org/route/v1/${profile}/${startCoord};${endCoord}`;
+      
+      console.log('Fetching OSRM route for mode:', mode, 'with toll preference:', preferToll);
+      
+      // Selalu minta rute alternatif untuk bisa memilih yang tol atau non-tol
+      const requestParams = {
+        steps: true,
+        geometries: 'geojson',
+        overview: 'full',
+        annotations: true,
+        alternatives: true, // Selalu minta alternatif
+        ...extraParams
+      };
+      
+      const response = await axios.get(osrmUrl, { params: requestParams });
+      
+      // Periksa data valid
+      if (response.data && 
+          response.data.routes && 
+          response.data.routes.length > 0) {
+        
+        // Identifikasi rute mana yang menggunakan tol dan yang tidak
+        const routesWithTollInfo = response.data.routes.map((route, index) => {
+          const hasToll = checkIfRouteLikelyUsesToll(route);
+          const geometry = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+          const instructions = extractRouteInstructions(route);
+          const distance = route.distance / 1000; // km
+          const duration = Math.round(route.duration / 60); // menit
+          
+          // Sesuaikan durasi untuk truk
+          const adjustedDuration = mode === 'driving-hgv' ? Math.round(duration * 1.3) : duration;
+          
+          return {
+            index,
+            route,
+            hasToll,
+            geometry,
+            instructions,
+            distance,
+            duration: adjustedDuration,
+            originalDuration: duration
+          };
+        });
+        
+        console.log("Route alternatives toll info:", routesWithTollInfo.map(r => 
+          `Route ${r.index}: ${r.hasToll ? 'Uses toll' : 'No toll'}, Distance: ${r.distance.toFixed(1)}km`
+        ));
+        
+        // Cari rute tol dan non-tol terbaik
+        let bestTollRoute = null;
+        let bestNonTollRoute = null;
+        
+        // Cari rute tol terbaik (paling pendek)
+        const tollRoutes = routesWithTollInfo.filter(r => r.hasToll);
+        if (tollRoutes.length > 0) {
+          bestTollRoute = tollRoutes.reduce((prev, curr) => 
+            prev.distance < curr.distance ? prev : curr
+          );
+        }
+        
+        // Cari rute non-tol terbaik (paling pendek)
+        const nonTollRoutes = routesWithTollInfo.filter(r => !r.hasToll);
+        if (nonTollRoutes.length > 0) {
+          bestNonTollRoute = nonTollRoutes.reduce((prev, curr) => 
+            prev.distance < curr.distance ? prev : curr
+          );
+        }
+        
+        // Jika tidak ada rute dengan karakteristik tol yang jelas, gunakan rute default
+        if (!bestTollRoute) {
+          console.log("No clear toll routes detected, using shortest route as toll route");
+          bestTollRoute = routesWithTollInfo[0]; // Rute terpendek sebagai default
+        }
+        
+        if (!bestNonTollRoute) {
+          console.log("No clear non-toll routes detected, using longest route as non-toll route");
+          // Gunakan rute terpanjang sebagai rute non-tol
+          bestNonTollRoute = [...routesWithTollInfo].sort((a, b) => b.distance - a.distance)[0];
+          
+          // Jika hanya ada satu rute, duplikasi sebagai non-toll
+          if (routesWithTollInfo.length === 1) {
+            bestNonTollRoute = {...routesWithTollInfo[0], hasToll: false};
+          }
+        }
+        
+        // Simpan rute alternatif untuk penggunaan selanjutnya
+        // Gunakan REF dan state untuk menghindari infinite loop
+        availableRoutesRef.current = {
+          tollRoute: bestTollRoute,
+          nonTollRoute: bestNonTollRoute
+        };
+        
+        // ESLint needs this, but watch out for infinite loops
+        setAvailableRoutes({
+          tollRoute: bestTollRoute,
+          nonTollRoute: bestNonTollRoute
+        });
+        
+        // Pilih rute yang sesuai dengan preferensi
+        const selectedRoute = preferToll ? 
+          (bestTollRoute || routesWithTollInfo[0]) : 
+          (bestNonTollRoute || (routesWithTollInfo.length > 1 ? routesWithTollInfo[1] : routesWithTollInfo[0]));
+        
+        console.log(`Selected ${selectedRoute.hasToll ? 'toll' : 'non-toll'} route based on preference: ${preferToll}`);
+        
+        setRouteGeometry(selectedRoute.geometry);
+        routeCalculatedRef.current = true;
+        setUsesToll(selectedRoute.hasToll);
+        
+        // Sesuaikan peta untuk menampilkan seluruh rute
+        if (selectedRoute.geometry.length > 0 && map) {
+          try {
+            const bounds = L.latLngBounds(selectedRoute.geometry);
+            map.fitBounds(bounds, { padding: [50, 50] });
+          } catch (e) {
+            console.error('Error fitting bounds:', e);
+          }
+        }
+        
+        // Generate peringatan untuk rute truk
+        let warnings = [];
+        if (mode === 'driving-hgv') {
+          warnings = detectTruckHazards(selectedRoute.geometry, selectedRoute.hasToll);
+          setTruckWarnings(warnings);
+        }
+        
+        // Panggil callback dengan hasil
+        if (onRouteCalculated) {
+          onRouteCalculated({
+            distance: selectedRoute.distance,
+            duration: selectedRoute.duration,
+            instructions: selectedRoute.instructions,
+            routeGeometry: selectedRoute.geometry,
+            truckWarnings: mode === 'driving-hgv' ? warnings : null,
+            usesToll: selectedRoute.hasToll
+          });
+        }
+      } else {
+        throw new Error('Invalid route data from OSRM');
+      }
+    } catch (err) {
+      console.error('Error fetching OSRM route:', err);
+      setError(err.message);
+      
+      // Reset cached routes karena error - menggunakan REF
+      availableRoutesRef.current = {
+        tollRoute: null,
+        nonTollRoute: null
+      };
+      
+      // ESLint needs this, but watch out for infinite loops
+      setAvailableRoutes({
+        tollRoute: null,
+        nonTollRoute: null
+      });
+      
+      // Jika OSRM gagal, gunakan perhitungan jarak sederhana sebagai fallback
+      const simpleDistance = calculateDistance(start, end);
+      const avgSpeedKmh = mode === 'driving-hgv' ? 40 : 50; // Truck lebih lambat
+      const durationMinutes = Math.round((simpleDistance / avgSpeedKmh) * 60);
+      
+      // Buat garis lurus sebagai fallback
+      setRouteGeometry([start, end]);
+      
+      // Generate instruksi navigasi sederhana
+      const simpleInstructions = generateBasicInstructions(start, end, mode);
+      
+      // Tambahkan peringatan untuk truk jika modenya truck
+      const truckWarningsList = [];
+      if (mode === 'driving-hgv') {
+        truckWarningsList.push({
+          type: 'fallback',
+          message: 'Menggunakan rute sederhana karena tidak bisa mendapatkan rute detail. Harap verifikasi kesesuaian rute untuk kendaraan besar.',
+          severity: 'warning'
+        });
+        setTruckWarnings(truckWarningsList);
+      }
+      
+      // Panggil callback dengan hasil sederhana
+      if (onRouteCalculated) {
+        onRouteCalculated({
+          distance: simpleDistance,
+          duration: durationMinutes,
+          instructions: simpleInstructions,
+          routeGeometry: [start, end],
+          truckWarnings: mode === 'driving-hgv' ? truckWarningsList : null,
+          usesToll: false // Fallback tidak menggunakan tol
+        });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [checkIfRouteLikelyUsesToll, detectTruckHazards, map, onRouteCalculated]);
+
+  // Effect khusus untuk mengubah rute saat preferensi tol berubah
+  useEffect(() => {
+    console.log(`Toll preference changed to: ${preferTollRoads}`);
+    
+    // Skip if no points set yet
+    if (!startPoint || !endPoint || !map) {
+      return;
+    }
+    
+    // !! FIXING INFINITE LOOP !!
+    // Use the REF for checking, not the state
+    const cachedRoutes = availableRoutesRef.current;
+    
+    // Tampilkan availableRoutes untuk ESLint - but don't depend on this value
+    // We're using the ref value instead for logic to prevent infinite loops
+    const tollRouteExists = availableRoutes.tollRoute !== null;
+    const nonTollRouteExists = availableRoutes.nonTollRoute !== null;
+    console.log("Current routes in state:", 
+      tollRouteExists ? "Has toll route" : "No toll route",
+      nonTollRouteExists ? "Has non-toll route" : "No non-toll route"
+    );
+    
+    if (cachedRoutes.tollRoute && cachedRoutes.nonTollRoute) {
+      // Use cached routes if available
+      console.log("Using cached routes based on toll preference");
+      
+      // Select based on preference
+      const selectedRoute = preferTollRoads ? 
+        cachedRoutes.tollRoute : 
+        cachedRoutes.nonTollRoute;
+      
+      console.log(`Using cached ${selectedRoute.hasToll ? 'toll' : 'non-toll'} route`);
+      
+      setRouteGeometry(selectedRoute.geometry);
+      routeCalculatedRef.current = true;
+      setUsesToll(selectedRoute.hasToll);
+      
+      // Generate truck warnings if needed
+      let warnings = [];
+      if (transportMode === 'driving-hgv') {
+        warnings = detectTruckHazards(selectedRoute.geometry, selectedRoute.hasToll);
+        setTruckWarnings(warnings);
+      }
+      
+      // Notify parent
+      if (onRouteCalculated) {
+        onRouteCalculated({
+          distance: selectedRoute.distance,
+          duration: selectedRoute.duration,
+          instructions: selectedRoute.instructions,
+          routeGeometry: selectedRoute.geometry,
+          truckWarnings: transportMode === 'driving-hgv' ? warnings : null,
+          usesToll: selectedRoute.hasToll
+        });
+      }
+    } else {
+      // No cached routes, need to fetch
+      console.log("No cached routes, fetching new routes...");
+      fetchRoute(startPoint, endPoint, transportMode, preferTollRoads);
+    }
+    
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preferTollRoads, startPoint, endPoint, map, transportMode, fetchRoute, detectTruckHazards, onRouteCalculated]); 
+  // DO NOT add availableRoutes here - it would cause infinite loops!
 
   // Jalankan fetchRoute saat komponen mount atau props berubah
   useEffect(() => {
@@ -301,9 +527,26 @@ const DetailedRouteMap = ({
       return;
     }
     
+    // Reset cached routes saat lokasi berubah
+    if (prevPropsRef.current.startPoint && prevPropsRef.current.endPoint && 
+        (prevPropsRef.current.startPoint[0] !== startPoint[0] || 
+         prevPropsRef.current.startPoint[1] !== startPoint[1] ||
+         prevPropsRef.current.endPoint[0] !== endPoint[0] ||
+         prevPropsRef.current.endPoint[1] !== endPoint[1])) {
+      // Reset both ref and state
+      availableRoutesRef.current = {
+        tollRoute: null,
+        nonTollRoute: null
+      };
+      setAvailableRoutes({
+        tollRoute: null,
+        nonTollRoute: null
+      });
+    }
+    
     // Ambil rute
-    fetchRoute(startPoint, endPoint, transportMode);
-  }, [startPoint, endPoint, transportMode, map]);
+    fetchRoute(startPoint, endPoint, transportMode, preferTollRoads);
+  }, [startPoint, endPoint, transportMode, map, fetchRoute, preferTollRoads]);
 
   // Jika tidak ada titik, jangan render apa-apa
   if (!startPoint || !endPoint) {
@@ -327,7 +570,7 @@ const DetailedRouteMap = ({
       {/* Render polyline berdasarkan geometri rute */}
       <Polyline
         positions={routeGeometry}
-        color={isTruckRoute ? "#e67e22" : "black"} // Warna oranye untuk rute truk
+        color={isTruckRoute ? "#e67e22" : (usesToll ? "#3182CE" : "#1F2937")} // Warna berbeda untuk rute tol
         weight={5}
         opacity={0.7}
       />
@@ -357,6 +600,64 @@ const DetailedRouteMap = ({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+      
+      {/* Tampilkan indikator jalan tol jika rute menggunakan tol */}
+      {usesToll && !isTruckRoute && (
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '20px',
+          backgroundColor: 'rgba(49, 130, 206, 0.9)',
+          color: 'white',
+          padding: '10px 15px',
+          borderRadius: '8px',
+          zIndex: 1000,
+          maxWidth: '300px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          fontSize: '14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+            <line x1="4" y1="22" x2="4" y2="15"></line>
+          </svg>
+          <div>
+            Rute menggunakan jalan tol
+          </div>
+        </div>
+      )}
+      
+      {/* Tampilkan indikator jalan normal jika rute tidak menggunakan tol */}
+      {!usesToll && !isTruckRoute && preferTollRoads === false && (
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '20px',
+          backgroundColor: 'rgba(79, 70, 229, 0.9)',
+          color: 'white',
+          padding: '10px 15px',
+          borderRadius: '8px',
+          zIndex: 1000,
+          maxWidth: '300px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          fontSize: '14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z"></path>
+            <path d="m8 6 4-4 4 4"></path>
+            <path d="M12 2v10"></path>
+            <path d="M8 16h8"></path>
+          </svg>
+          <div>
+            Rute menggunakan jalan non-tol
+          </div>
         </div>
       )}
       

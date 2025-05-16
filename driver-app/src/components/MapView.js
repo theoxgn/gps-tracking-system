@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -43,6 +43,7 @@ const MapView = ({
   startPoint, 
   endPoint,
   transportMode,
+  preferTollRoads = true, // Default value jika tidak diberikan
   onRouteCalculated
 }) => {
   const mapRef = useRef(null);
@@ -134,6 +135,7 @@ const MapView = ({
             startPoint={startPoint} 
             endPoint={endPoint} 
             transportMode={transportMode}
+            preferTollRoads={preferTollRoads}
             onRouteCalculated={onRouteCalculated}
           />
         )}

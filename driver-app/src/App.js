@@ -71,7 +71,8 @@ function App() {
   const prevRouteRef = useRef({
     startPoint: null,
     endPoint: null,
-    transportMode: null
+    transportMode: null,
+    preferTollRoads: true // Initialize with default
   });
   
   // Ref to track if route calculation is in progress
@@ -87,6 +88,7 @@ function App() {
     length: 12,   // meter
     axles: 2      // jumlah sumbu
   });
+  const [preferTollRoads, setPreferTollRoads] = useState(true);
 
   /**
    * Initialize socket connection
@@ -229,7 +231,7 @@ function App() {
       return;
     }
     
-    console.log('Calculating route info between:', start, 'and', end);
+    console.log('Calculating route info between:', start, 'and', end, 'with toll preference:', preferTollRoads);
     
     // Skip recalculation if inputs haven't changed
     const inputsChanged = 
@@ -239,7 +241,8 @@ function App() {
       prevRouteRef.current.startPoint[1] !== start[1] ||
       prevRouteRef.current.endPoint[0] !== end[0] ||
       prevRouteRef.current.endPoint[1] !== end[1] ||
-      prevRouteRef.current.transportMode !== transportMode;
+      prevRouteRef.current.transportMode !== transportMode ||
+      prevRouteRef.current.preferTollRoads !== preferTollRoads; // Add toll preference check
       
     if (!inputsChanged) {
       console.log('Skipping route calculation - inputs unchanged');
@@ -253,7 +256,8 @@ function App() {
     prevRouteRef.current = {
       startPoint: [...start],
       endPoint: [...end],
-      transportMode
+      transportMode,
+      preferTollRoads // Store toll preference
     };
     
     try {
@@ -292,7 +296,8 @@ function App() {
         duration: durationMinutes,
         instructions: instructions,
         routeGeometry: [start, end], // Simple straight line for now
-        vehicleSpecs: vehicleSpecs
+        vehicleSpecs: vehicleSpecs,
+        preferTollRoads: preferTollRoads // Include toll preference
       };
       
       // Update route state in a single batch
@@ -318,6 +323,55 @@ function App() {
       // Always reset calculation flag when done
       isCalculatingRoute.current = false;
     }
+  };
+
+  /**
+   * Handle toll preference toggle changes
+   */
+  const handleTollPreferenceChange = () => {
+    // Update the preference state
+    const newPreference = !preferTollRoads;
+    setPreferTollRoads(newPreference);
+    
+    // Force a complete route recalculation if we have both points
+    if (startPoint && endPoint) {
+      // Notify the server about the preference change
+      if (socket && connected) {
+        socket.emit('routePreferenceChanged', {
+          deviceID: driverId,
+          preferTollRoads: newPreference
+        });
+      }
+      
+      // Clear any cached route data in the map component
+      // We do this indirectly by sending a special event through the socket
+      if (socket && connected) {
+        socket.emit('clearCachedRoutes', {
+          deviceID: driverId
+        });
+      }
+      
+      // Small delay to ensure state updates are processed
+      setTimeout(() => {
+        console.log("Recalculating route with new toll preference:", newPreference);
+        
+        // Calculate with updated preference
+        calculateRouteInfo(startPoint, endPoint);
+        
+        // Also manually update the MapView component's props to force rerender
+        if (mapRef.current) {
+          try {
+            // This helps trigger a fresh render in the map component
+            mapRef.current.invalidateSize();
+          } catch (err) {
+            console.log("Error invalidating map size:", err);
+          }
+        }
+      }, 50);
+    }
+    
+    // Update the UI to provide visual feedback immediately
+    console.log(`Toll preference changed to: ${newPreference ? 'Use toll roads' : 'Avoid toll roads'}`);
   };
 
   /**
@@ -504,7 +558,8 @@ function App() {
     prevRouteRef.current = {
       startPoint: null,
       endPoint: null,
-      transportMode: transportMode
+      transportMode: transportMode,
+      preferTollRoads: preferTollRoads
     };
   };
 
@@ -534,7 +589,8 @@ function App() {
       startPoint,
       endPoint,
       pointsCount: routeGeometry.length,
-      transportMode // Include transport mode
+      transportMode, // Include transport mode
+      preferTollRoads // Include toll preference
     });
     
     // Prepare route data
@@ -547,6 +603,7 @@ function App() {
       distance: routeData?.distance || routeDistance,
       duration: routeData?.duration || routeDuration,
       timestamp: Date.now(),
+      preferTollRoads: preferTollRoads,
       // Include truck specs if mode is truck
       ...(transportMode === 'driving-hgv' ? { vehicleSpecs: truckSpecs } : {})
     };
@@ -663,12 +720,94 @@ function App() {
 
   const renderRouteInfo = () => {
     if (!startPoint || !endPoint) return null;
+
+    const renderTollRoadPreference = () => {
+      if (!startPoint || !endPoint) return null;
+      
+      return (
+        <div style={styles.card}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div style={styles.statusLabel}>
+              <div style={{display: 'flex', alignItems: 'center', gap: '6px'}}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                  <line x1="4" y1="22" x2="4" y2="15"></line>
+                </svg>
+                Prioritaskan Jalan Tol
+              </div>
+            </div>
+            <div>
+              <label className="switch" style={{
+                position: 'relative',
+                display: 'inline-block',
+                width: '40px',
+                height: '20px'
+              }}>
+                <input 
+                  type="checkbox" 
+                  checked={preferTollRoads}
+                  onChange={handleTollPreferenceChange}
+                  style={{
+                    opacity: 0,
+                    width: 0,
+                    height: 0
+                  }}
+                />
+                <span style={{
+                  position: 'absolute',
+                  cursor: 'pointer',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: preferTollRoads ? '#3b82f6' : '#94a3b8',
+                  transition: '.4s',
+                  borderRadius: '34px',
+                  '&:before': {
+                    position: 'absolute',
+                    content: '""',
+                    height: '16px',
+                    width: '16px',
+                    left: '2px',
+                    bottom: '2px',
+                    backgroundColor: 'white',
+                    transition: '.4s',
+                    borderRadius: '50%',
+                    transform: preferTollRoads ? 'translateX(20px)' : 'translateX(0)'
+                  }
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    content: '""',
+                    height: '16px',
+                    width: '16px',
+                    left: '2px',
+                    bottom: '2px',
+                    backgroundColor: 'white',
+                    transition: '.4s',
+                    borderRadius: '50%',
+                    transform: preferTollRoads ? 'translateX(20px)' : 'translateX(0)'
+                  }}></div>
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
+      );
+    };
+    
     
     return (
       <>
         <div style={{...styles.sectionTitle, marginTop: '12px'}}>
           <MapPinned size={16} /> Informasi Rute
         </div>
+
+        {renderTollRoadPreference()}
         
         <div style={styles.card}>
           <div style={styles.statusLabel}>Jarak</div>
@@ -902,6 +1041,7 @@ function App() {
         endPoint={endPoint}
         transportMode={transportMode}
         truckSpecs={transportMode === 'driving-hgv' ? truckSpecs : null} // Teruskan truck specs
+        preferTollRoads={preferTollRoads}
         onRouteCalculated={handleRouteCalculated}
       />
       
