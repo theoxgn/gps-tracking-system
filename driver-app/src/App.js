@@ -24,6 +24,7 @@ import { styles } from './styles';
 import PlacesAutocomplete from './components/PlacesAutocomplete';
 import { calculateDistance } from './utils/mapUtils';
 import MapView from './components/MapView';
+import TruckSpecifications from './components/TruckSpecifications';
 
 // Constants
 const SERVER_URL = process.env.REACT_APP_API_URL;
@@ -78,6 +79,14 @@ function App() {
   
   // Ref for tracking map initialization
   const mapInitialized = useRef(false);
+
+  const [truckSpecs, setTruckSpecs] = useState({
+    height: 4.2,  // meter
+    weight: 16,   // ton
+    width: 2.5,   // meter
+    length: 12,   // meter
+    axles: 2      // jumlah sumbu
+  });
 
   /**
    * Initialize socket connection
@@ -248,10 +257,13 @@ function App() {
     };
     
     try {
+      // For truck mode, pass truck specs
+      const vehicleSpecs = transportMode === 'driving-hgv' ? truckSpecs : null;
+      
       // Basic route calculations
       const distance = calculateDistance(start, end);
-      const avgSpeedKmh = 50;
-      const durationMinutes = Math.round((distance / avgSpeedKmh) * 60);
+      const avgSpeedKmh = transportMode === 'driving-hgv' ? 40 : 50; // Slower for trucks
+      let durationMinutes = Math.round((distance / avgSpeedKmh) * 60);
       
       // Generate basic instructions
       const instructions = [
@@ -279,7 +291,8 @@ function App() {
         distance: distance,
         duration: durationMinutes,
         instructions: instructions,
-        routeGeometry: [start, end] // Simple straight line for now
+        routeGeometry: [start, end], // Simple straight line for now
+        vehicleSpecs: vehicleSpecs
       };
       
       // Update route state in a single batch
@@ -295,7 +308,7 @@ function App() {
       const distance = calculateDistance(start, end);
       setRouteDistance(distance);
       
-      const avgSpeedKmh = 50;
+      const avgSpeedKmh = transportMode === 'driving-hgv' ? 40 : 50; // Slower for trucks
       const durationMinutes = Math.round((distance / avgSpeedKmh) * 60);
       setRouteDuration(durationMinutes);
       
@@ -520,7 +533,8 @@ function App() {
       driverId,
       startPoint,
       endPoint,
-      pointsCount: routeGeometry.length
+      pointsCount: routeGeometry.length,
+      transportMode // Include transport mode
     });
     
     // Prepare route data
@@ -529,10 +543,12 @@ function App() {
       startPoint: startPoint,
       endPoint: endPoint,
       routeGeometry: routeGeometry,
-      transportMode: transportMode,
+      transportMode: transportMode, // Include transport mode
       distance: routeData?.distance || routeDistance,
       duration: routeData?.duration || routeDuration,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      // Include truck specs if mode is truck
+      ...(transportMode === 'driving-hgv' ? { vehicleSpecs: truckSpecs } : {})
     };
     
     // Send to server
@@ -698,6 +714,24 @@ function App() {
             <option value="foot-walking">Jalan Kaki</option>
           </select>
         </div>
+        
+        {/* Informasi Khusus Truk - Hanya ditampilkan jika mode = truck */}
+        {transportMode === 'driving-hgv' && (
+          <div style={{...styles.card, backgroundColor: '#fdba74', color: '#7c2d12'}}>
+            <div style={{fontWeight: 'bold', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px'}}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              Info Mode Truk
+            </div>
+            <div style={{fontSize: '14px', lineHeight: '1.4'}}>
+              <p>OSRM Public API tidak memiliki profil khusus untuk truk. Rute yang ditampilkan menggunakan profil mobil dengan penyesuaian waktu tempuh.</p>
+              <p style={{marginTop: '8px'}}>Perhatikan batasan tinggi, berat, dan lebar jalan yang mungkin tidak terdeteksi. Perkiraan waktu sudah disesuaikan untuk kecepatan truk.</p>
+            </div>
+          </div>
+        )}
       </>
     );
   };
@@ -826,6 +860,15 @@ function App() {
           )}
         </div>
         
+        {/* Tambahkan komponen spesifikasi truk jika mode transportasi adalah truk */}
+        {transportMode === 'driving-hgv' && (
+          <TruckSpecifications 
+            truckSpecs={truckSpecs}
+            onUpdate={setTruckSpecs}
+            style={{marginTop: '12px'}}
+          />
+        )}
+        
         <button 
           onClick={watchId === null ? startTracking : stopTracking} 
           style={{
@@ -858,6 +901,7 @@ function App() {
         startPoint={startPoint}
         endPoint={endPoint}
         transportMode={transportMode}
+        truckSpecs={transportMode === 'driving-hgv' ? truckSpecs : null} // Teruskan truck specs
         onRouteCalculated={handleRouteCalculated}
       />
       

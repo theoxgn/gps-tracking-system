@@ -8,9 +8,10 @@ const OSRM_ENDPOINT = 'https://router.project-osrm.org/route/v1';
  * @param {Array} startPoint - Koordinat titik awal [lat, lng]
  * @param {Array} endPoint - Koordinat titik akhir [lat, lng]
  * @param {String} transportMode - Mode transportasi (car, bike, foot)
+ * @param {Object} vehicleSpecs - Spesifikasi kendaraan (untuk truk)
  * @returns {Promise} - Promise yang menghasilkan data rute
  */
-export const getOsrmRoute = async (startPoint, endPoint, transportMode = 'car') => {
+export const getOsrmRoute = async (startPoint, endPoint, transportMode = 'car', vehicleSpecs = null) => {
   try {
     // OSRM mengharapkan format [lng, lat], bukan [lat, lng]
     const startCoord = `${startPoint[1]},${startPoint[0]}`;
@@ -33,16 +34,172 @@ export const getOsrmRoute = async (startPoint, endPoint, transportMode = 'car') 
       annotations: 'true'
     };
     
+    // Tambahkan parameter khusus untuk truk jika transportMode adalah truck
+    if (transportMode === 'driving-hgv' || transportMode === 'truck') {
+      params.continue_straight = true; // Hindari putar balik yang sulit untuk truk
+    }
+    
     const response = await axios.get(url, { params });
     
     console.log('OSRM response received:', response.status);
     
     // Transformasi respons ke format standar
-    return transformOsrmResponse(response.data);
+    let routeData = transformOsrmResponse(response.data);
+    
+    // Jika kendaraan adalah truk, lakukan post-processing untuk truk
+    if (transportMode === 'driving-hgv' || transportMode === 'truck') {
+      routeData = postProcessTruckRoute(routeData, vehicleSpecs || getDefaultTruckSpecs());
+    }
+    
+    return routeData;
   } catch (error) {
     console.error('Error fetching OSRM route:', error);
     throw error;
   }
+};
+
+/**
+ * Post-process rute untuk memastikan kesesuaian dengan truk
+ * @param {Object} routeData - Rute dari OSRM
+ * @param {Object} truckSpecs - Spesifikasi truk
+ * @returns {Object} - Rute yang telah dimodifikasi
+ */
+const postProcessTruckRoute = (routeData, truckSpecs) => {
+  if (!routeData || !routeData.features || routeData.features.length === 0) {
+    return routeData;
+  }
+  
+  const mainRoute = routeData.features[0];
+  
+  if (!mainRoute.properties || !mainRoute.properties.segments) {
+    return routeData;
+  }
+
+  // Ekstrak informasi rute
+  const segments = mainRoute.properties.segments[0];
+
+  // Sesuaikan durasi dan jarak untuk truk
+  // Truk biasanya bergerak lebih lambat dari mobil
+  if (segments.duration) {
+    // Tambahkan 30% waktu untuk truk
+    segments.truckDuration = segments.duration * 1.3;
+    segments.summary.truckDuration = segments.duration * 1.3;
+    
+    // Update duration asli untuk UI
+    segments.originalDuration = segments.duration;
+    segments.duration = segments.truckDuration;
+    segments.summary.originalDuration = segments.summary.duration;
+    segments.summary.duration = segments.truckDuration;
+  }
+  
+  // Deteksi segmen jalan potensial yang tidak cocok untuk truk
+  const warnings = detectPotentialHazards(mainRoute.geometry, truckSpecs);
+  
+  // Tambahkan peringatan ke objek rute
+  routeData.truckWarnings = warnings;
+  mainRoute.properties.truckWarnings = warnings;
+  
+  return routeData;
+};
+
+/**
+ * Deteksi potensi bahaya untuk truk sepanjang rute
+ * @param {Object} geometry - Geometri rute
+ * @param {Object} truckSpecs - Spesifikasi truk
+ * @returns {Array} - Array peringatan
+ */
+const detectPotentialHazards = (geometry, truckSpecs) => {
+  const warnings = [];
+  
+  if (!geometry || !geometry.coordinates || geometry.coordinates.length < 3) {
+    return warnings;
+  }
+  
+  const { height, weight, width, length } = truckSpecs;
+  
+  // Cek tiap 3 titik berurutan untuk mendeteksi tikungan tajam
+  for (let i = 0; i < geometry.coordinates.length - 2; i++) {
+    const p1 = geometry.coordinates[i];
+    const p2 = geometry.coordinates[i+1];
+    const p3 = geometry.coordinates[i+2];
+    
+    // Hitung sudut antara 3 titik
+    const angle = calculateAngle(p1, p2, p3);
+    
+    // Jika sudut sangat tajam (< 45 derajat), tandai sebagai berbahaya
+    if (angle < 45) {
+      warnings.push({
+        type: 'sharp_turn',
+        message: `Tikungan tajam terdeteksi (${angle.toFixed(0)}°)`,
+        position: p2,
+        index: i+1,
+        severity: angle < 30 ? 'high' : 'medium'
+      });
+    }
+  }
+  
+  // Tambahkan peringatan umum untuk truk besar
+  if (height > 4.0 || weight > 15 || length > 12) {
+    warnings.push({
+      type: 'general',
+      message: `Truk dengan dimensi besar (H:${height}m, W:${weight}t, L:${length}m) mungkin mengalami kesulitan di beberapa jalan`,
+      severity: 'info'
+    });
+  }
+  
+  // Jika tidak ada peringatan spesifik tapi mode transportasi adalah truk
+  if (warnings.length === 0) {
+    warnings.push({
+      type: 'info',
+      message: 'Rute dioptimalkan menggunakan profil mobil. Harap perhatikan batasan truk seperti tinggi, berat, dan lebar jalan.',
+      severity: 'info'
+    });
+  }
+  
+  return warnings;
+};
+
+/**
+ * Menghitung sudut antara 3 titik dalam derajat
+ * @param {Array} p1 - Titik 1 [lng, lat]
+ * @param {Array} p2 - Titik 2 [lng, lat]
+ * @param {Array} p3 - Titik 3 [lng, lat]
+ * @returns {Number} - Sudut dalam derajat
+ */
+const calculateAngle = (p1, p2, p3) => {
+  // Hitung vektor dari p2 ke p1 dan p2 ke p3
+  const v1 = [p1[0] - p2[0], p1[1] - p2[1]];
+  const v2 = [p3[0] - p2[0], p3[1] - p2[1]];
+  
+  // Hitung dot product
+  const dotProduct = v1[0] * v2[0] + v1[1] * v2[1];
+  
+  // Hitung magnitudes
+  const mag1 = Math.sqrt(v1[0] * v1[0] + v1[1] * v1[1]);
+  const mag2 = Math.sqrt(v2[0] * v2[0] + v2[1] * v2[1]);
+  
+  // Hitung cosine dari sudut
+  const cosAngle = dotProduct / (mag1 * mag2);
+  
+  // Konversi ke sudut dalam derajat
+  const angleRad = Math.acos(Math.min(Math.max(cosAngle, -1), 1));
+  const angleDeg = angleRad * 180 / Math.PI;
+  
+  return angleDeg;
+};
+
+/**
+ * Default spesifikasi truk untuk Indonesia
+ * @returns {Object} - Spesifikasi default
+ */
+export const getDefaultTruckSpecs = () => {
+  return {
+    height: 4.2,  // meter
+    weight: 16,   // ton
+    width: 2.5,   // meter
+    length: 12,   // meter
+    axles: 2      // jumlah sumbu
+  };
 };
 
 /**
@@ -86,7 +243,7 @@ export const getOsrmAlternativeRoutes = async (startPoint, endPoint, transportMo
  * @param {String} mode - Mode transportasi custom
  * @returns {String} - Profile OSRM yang sesuai
  */
-const transportModeToProfile = (mode) => {
+export const transportModeToProfile = (mode) => {
   switch (mode) {
     case 'driving-car':
     case 'car':
