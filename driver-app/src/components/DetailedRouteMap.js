@@ -218,6 +218,9 @@ const DetailedRouteMap = ({
   // Event handler untuk menerima respons rute dari GraphHopper
   const handleGraphhopperResponse = useCallback((routeData) => {
     console.log('Received GraphHopper route response:', routeData);
+
+    // Tambahkan console.log berikut untuk melihat detail struktur tollInfo
+    console.log('Toll info detail dari server:', routeData.tollInfo);
     setIsLoading(false);
     graphhopperRequestSent.current = false;
     
@@ -329,6 +332,7 @@ const DetailedRouteMap = ({
       return;
     }
     
+    console.log('🚀 Mengirim permintaan rute ke GraphHopper via Socket');
     // Tandai bahwa request sedang dalam proses
     graphhopperRequestSent.current = true;
     setIsLoading(true);
@@ -349,7 +353,9 @@ const DetailedRouteMap = ({
       endPoint: end,
       transportMode: mode,
       preferTollRoads: preferToll,
-      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null
+      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null,
+      algorithm: "alternative_route", 
+      alternative_route_max_paths: 2 
     };
     
     // Emit event ke server
@@ -425,6 +431,8 @@ const DetailedRouteMap = ({
         overview: 'full',
         annotations: true,
         alternatives: true, // Selalu minta alternatif
+        generate_hints: false, 
+        skip_waypoints: false,
         ...extraParams
       };
       
@@ -564,6 +572,9 @@ const DetailedRouteMap = ({
             tollDistance: estimatedTollDistance,
             isEstimated: true
           };
+
+// Tambahkan log untuk melihat struktur data tollInfo dari OSRM
+console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
           
           setTollInfo(estimatedTollInfo);
         }
@@ -812,6 +823,8 @@ const DetailedRouteMap = ({
         color={isTruckRoute ? "#e67e22" : (usesToll ? "#3182CE" : "#1F2937")} // Warna berbeda untuk rute tol
         weight={5}
         opacity={0.7}
+        smoothFactor={0.2}
+        className="route-polyline"
       />
       
       {/* Tampilkan peringatan jika ini rute truk dan ada peringatan */}
@@ -847,7 +860,7 @@ const DetailedRouteMap = ({
         <div style={{
           position: 'absolute',
           bottom: '20px',
-          left: '340px',
+          left: '320px',
           backgroundColor: 'rgba(49, 130, 206, 0.9)',
           color: 'white',
           padding: '10px 15px',
