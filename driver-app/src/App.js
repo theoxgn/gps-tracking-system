@@ -25,6 +25,7 @@ import PlacesAutocomplete from './components/PlacesAutocomplete';
 import { calculateDistance } from './utils/mapUtils';
 import MapView from './components/MapView';
 import TruckSpecifications from './components/TruckSpecifications';
+import { getGraphhopperRoute } from './services/graphhopperRouteService';
 
 // Constants
 const SERVER_URL = process.env.REACT_APP_API_URL;
@@ -242,7 +243,7 @@ function App() {
       prevRouteRef.current.endPoint[0] !== end[0] ||
       prevRouteRef.current.endPoint[1] !== end[1] ||
       prevRouteRef.current.transportMode !== transportMode ||
-      prevRouteRef.current.preferTollRoads !== preferTollRoads; // Add toll preference check
+      prevRouteRef.current.preferTollRoads !== preferTollRoads;
       
     if (!inputsChanged) {
       console.log('Skipping route calculation - inputs unchanged');
@@ -257,13 +258,39 @@ function App() {
       startPoint: [...start],
       endPoint: [...end],
       transportMode,
-      preferTollRoads // Store toll preference
+      preferTollRoads
     };
     
     try {
-      // For truck mode, pass truck specs
-      const vehicleSpecs = transportMode === 'driving-hgv' ? truckSpecs : null;
+      // Untuk mode truk, gunakan GraphHopper secara langsung
+      if (transportMode === 'driving-hgv') {
+        console.log('Using GraphHopper for truck routing calculation');
+        
+        try {
+          // Gunakan service GraphHopper
+          const routeData = await getGraphhopperRoute(start, end, transportMode, truckSpecs, preferTollRoads);
+          
+          // Update state rute
+          setRouteDistance(routeData.distance);
+          setRouteDuration(routeData.duration);
+          setRouteInstructions(routeData.instructions || []);
+          
+          // Kirim data rute ke server
+          sendRouteToServer({
+            ...routeData,
+            // Pastikan format data sesuai dengan yang diharapkan server
+            vehicleSpecs: truckSpecs,
+            preferTollRoads: preferTollRoads
+          });
+          
+          return;
+        } catch (error) {
+          console.error('GraphHopper routing failed, falling back to OSRM:', error);
+          // Lanjutkan dengan perhitungan OSRM sebagai fallback
+        }
+      }
       
+      // Untuk mode transportasi lainnya, atau jika GraphHopper gagal
       // Basic route calculations
       const distance = calculateDistance(start, end);
       const avgSpeedKmh = transportMode === 'driving-hgv' ? 40 : 50; // Slower for trucks
@@ -296,8 +323,8 @@ function App() {
         duration: durationMinutes,
         instructions: instructions,
         routeGeometry: [start, end], // Simple straight line for now
-        vehicleSpecs: vehicleSpecs,
-        preferTollRoads: preferTollRoads // Include toll preference
+        vehicleSpecs: transportMode === 'driving-hgv' ? truckSpecs : null,
+        preferTollRoads: preferTollRoads
       };
       
       // Update route state in a single batch
@@ -305,7 +332,6 @@ function App() {
       setRouteDuration(durationMinutes);
       setRouteInstructions(instructions);
       sendRouteToServer(routeData);
-      
     } catch (error) {
       console.error('Error calculating route info:', error);
       
