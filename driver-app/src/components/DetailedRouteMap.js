@@ -4,7 +4,6 @@ import L from 'leaflet';
 import axios from 'axios';
 import { getGraphhopperRoute } from '../services/graphhopperRouteService';
 
-
 /**
  * Komponen untuk menampilkan rute lengkap di peta menggunakan GraphHopper atau OSRM
  * @param {Object} props - Component props
@@ -36,7 +35,6 @@ const DetailedRouteMap = ({
   const [usesToll, setUsesToll] = useState(false);
   const [tollInfo, setTollInfo] = useState(null);
   
-  
   // Gunakan ref untuk mencegah perhitungan ulang yang tidak perlu
   const prevPropsRef = useRef({ 
     startPoint, 
@@ -51,13 +49,22 @@ const DetailedRouteMap = ({
     nonTollRoute: null
   });
   
+  // Gunakan ref untuk status routing dan preferensi tol
   const routeCalculatedRef = useRef(false);
+  const preferTollRoadsRef = useRef(preferTollRoads);
+  const isFetchingRouteRef = useRef(false);
+  const lastFetchTimeRef = useRef(0);
   
   // Ref untuk map instance
   const map = useMap();
 
   // Ref untuk menandai apakah GraphHopper request telah dikirim
   const graphhopperRequestSent = useRef(false);
+  
+  // Update ref saat props berubah untuk mencegah stale closure
+  useEffect(() => {
+    preferTollRoadsRef.current = preferTollRoads;
+  }, [preferTollRoads]);
   
   // Efek untuk mendeteksi jika mode transportasi adalah truk
   useEffect(() => {
@@ -215,11 +222,11 @@ const DetailedRouteMap = ({
   // Event handler untuk menerima respons rute dari GraphHopper
   const handleGraphhopperResponse = useCallback((routeData) => {
     console.log('Received GraphHopper route response:', routeData);
-
-    // Tambahkan console.log berikut untuk melihat detail struktur tollInfo
     console.log('Toll info detail dari server:', routeData.tollInfo);
+    
     setIsLoading(false);
     graphhopperRequestSent.current = false;
+    isFetchingRouteRef.current = false;
     
     if (!routeData || routeData.error) {
       console.error('GraphHopper error:', routeData?.error || 'Unknown error');
@@ -227,7 +234,7 @@ const DetailedRouteMap = ({
       
       // Fallback ke rute OSRM jika GraphHopper gagal
       console.log('Falling back to OSRM route calculation');
-      fetchOsrmRoute(startPoint, endPoint, transportMode, preferTollRoads);
+      fetchOsrmRoute(startPoint, endPoint, transportMode, preferTollRoadsRef.current);
       return;
     }
     
@@ -258,10 +265,9 @@ const DetailedRouteMap = ({
     }
     
     // Generate peringatan untuk truk jika diperlukan
+    const warnings = [];
     if (transportMode === 'driving-hgv') {
-      const warnings = [
-        ...detectTruckHazards(routeData.routeGeometry, usesToll)
-      ];
+      warnings.push(...detectTruckHazards(routeData.routeGeometry, usesToll));
       
       // Tambahkan info biaya tol ke peringatan
       if (usesToll && routeData.tollInfo && routeData.tollInfo.estimatedCost) {
@@ -287,24 +293,25 @@ const DetailedRouteMap = ({
         duration: routeData.duration,
         instructions: routeData.instructions || [],
         routeGeometry: routeData.routeGeometry,
-        truckWarnings: transportMode === 'driving-hgv' ? truckWarnings : null,
+        truckWarnings: warnings, // Gunakan peringatan yang baru dibuat
         usesToll: usesToll,
         tollInfo: routeData.tollInfo || null
       });
     }
-  }, [startPoint, endPoint, transportMode, map, detectTruckHazards, truckWarnings, onRouteCalculated]);
+  }, [startPoint, endPoint, transportMode, map, detectTruckHazards, onRouteCalculated]);
   
   // Event handler untuk error dari GraphHopper
   const handleGraphhopperError = useCallback((errorData) => {
     console.error('GraphHopper route error:', errorData);
     setIsLoading(false);
     graphhopperRequestSent.current = false;
+    isFetchingRouteRef.current = false;
     setError(errorData?.error || 'Error calculating route');
     
     // Fallback ke OSRM jika GraphHopper gagal
     console.log('Falling back to OSRM route calculation');
-    fetchOsrmRoute(startPoint, endPoint, transportMode, preferTollRoads);
-  }, [startPoint, endPoint, transportMode, preferTollRoads]);
+    fetchOsrmRoute(startPoint, endPoint, transportMode, preferTollRoadsRef.current);
+  }, [startPoint, endPoint, transportMode]);
   
   // Setup socket event listeners untuk GraphHopper
   useEffect(() => {
@@ -321,56 +328,22 @@ const DetailedRouteMap = ({
     };
   }, [socket, handleGraphhopperResponse, handleGraphhopperError]);
 
-  // Fungsi untuk mengambil rute dari GraphHopper via socket
-  const fetchGraphhopperRoute = useCallback((start, end, mode, preferToll) => {
-    if (!socket || !socket.connected) {
-      console.log('Socket not connected, falling back to OSRM');
-      fetchOsrmRoute(start, end, mode, preferToll);
+  // Fungsi untuk mengambil rute dari OSRM jika GraphHopper gagal
+  const fetchOsrmRoute = useCallback(async (start, end, mode, preferToll = true) => {
+    if (!start || !end) return;
+    
+    // Hindari multiple fetching bersamaan
+    if (isFetchingRouteRef.current) {
+      console.log('Skipping OSRM route fetch - already in progress');
       return;
     }
     
-    console.log('🚀 Mengirim permintaan rute ke GraphHopper via Socket');
-    // Tandai bahwa request sedang dalam proses
-    graphhopperRequestSent.current = true;
-    setIsLoading(true);
-    setError(null);
-    
-    console.log('Requesting route from GraphHopper via socket:', {
-      startPoint: start, 
-      endPoint: end, 
-      mode, 
-      preferToll,
-      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null
-    });
-    
-    // Siapkan data untuk request
-    const routeRequest = {
-      deviceID: driverId || 'unknown',
-      startPoint: start,
-      endPoint: end,
-      transportMode: mode,
-      preferTollRoads: preferToll,
-      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null,
-      algorithm: "alternative_route", 
-      alternative_route_max_paths: 2 
-    };
-    
-    // Emit event ke server
-    socket.emit('requestRouteWithToll', routeRequest);
-    
-    // Set timeout untuk fallback ke OSRM jika tidak ada respons dalam 5 detik
-    setTimeout(() => {
-      if (graphhopperRequestSent.current) {
-        console.log('GraphHopper request timed out, falling back to OSRM');
-        graphhopperRequestSent.current = false;
-        fetchOsrmRoute(start, end, mode, preferToll);
-      }
-    }, 5000);
-  }, [socket, driverId, truckSpecs]);
-  
-  // Fungsi asli untuk mengambil rute dari OSRM jika GraphHopper gagal
-  const fetchOsrmRoute = useCallback(async (start, end, mode, preferToll = true) => {
-    if (!start || !end) return;
+    // Implementasi throttling - skips requests that come too close together
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 500) { // 500ms throttle
+      console.log('Throttling OSRM request - too many requests');
+      return;
+    }
     
     // Check if toll preference changed specifically
     const tollPreferenceChanged = prevPropsRef.current.preferTollRoads !== preferToll;
@@ -398,6 +371,9 @@ const DetailedRouteMap = ({
       transportMode: mode,
       preferTollRoads: preferToll
     };
+    
+    isFetchingRouteRef.current = true;
+    lastFetchTimeRef.current = now;
     
     setIsLoading(true);
     setError(null);
@@ -505,7 +481,6 @@ const DetailedRouteMap = ({
         }
         
         // Simpan rute alternatif untuk penggunaan selanjutnya
-        // Gunakan REF dan state untuk menghindari infinite loop
         availableRoutesRef.current = {
           tollRoute: bestTollRoute,
           nonTollRoute: bestNonTollRoute
@@ -536,9 +511,9 @@ const DetailedRouteMap = ({
         }
         
         // Generate peringatan untuk rute truk
-        let warnings = [];
+        const warnings = [];
         if (mode === 'driving-hgv') {
-          warnings = detectTruckHazards(selectedRoute.geometry, selectedRoute.hasToll);
+          warnings.push(...detectTruckHazards(selectedRoute.geometry, selectedRoute.hasToll));
           setTruckWarnings(warnings);
         }
         
@@ -564,8 +539,7 @@ const DetailedRouteMap = ({
             isEstimated: true
           };
 
-// Tambahkan log untuk melihat struktur data tollInfo dari OSRM
-console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
+          console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
           
           setTollInfo(estimatedTollInfo);
         }
@@ -577,7 +551,7 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
             duration: selectedRoute.duration,
             instructions: selectedRoute.instructions,
             routeGeometry: selectedRoute.geometry,
-            truckWarnings: mode === 'driving-hgv' ? warnings : null,
+            truckWarnings: warnings, // Gunakan warnings yang baru dibuat, bukan state
             usesToll: selectedRoute.hasToll,
             tollInfo: estimatedTollInfo
           });
@@ -589,12 +563,11 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
       console.error('Error fetching OSRM route:', err);
       setError(err.message);
       
-      // Reset cached routes karena error - menggunakan REF
+      // Reset cached routes karena error
       availableRoutesRef.current = {
         tollRoute: null,
         nonTollRoute: null
       };
-    
       
       // Jika OSRM gagal, gunakan perhitungan jarak sederhana sebagai fallback
       const simpleDistance = calculateDistance(start, end);
@@ -625,29 +598,99 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
           duration: durationMinutes,
           instructions: simpleInstructions,
           routeGeometry: [start, end],
-          truckWarnings: mode === 'driving-hgv' ? truckWarningsList : null,
+          truckWarnings: truckWarningsList,
           usesToll: false // Fallback tidak menggunakan tol
         });
       }
     } finally {
       setIsLoading(false);
+      isFetchingRouteRef.current = false;
     }
   }, [checkIfRouteLikelyUsesToll, detectTruckHazards, map, onRouteCalculated, truckSpecs]);
 
+  // Fungsi untuk mengambil rute dari GraphHopper via socket
+  const fetchGraphhopperRoute = useCallback((start, end, mode, preferToll) => {
+    // Hindari multiple fetching bersamaan
+    if (isFetchingRouteRef.current) {
+      console.log('Skipping route fetch - already in progress');
+      return;
+    }
+    
+    if (!socket || !socket.connected) {
+      console.log('Socket not connected, falling back to OSRM');
+      fetchOsrmRoute(start, end, mode, preferToll);
+      return;
+    }
+    
+    console.log('🚀 Mengirim permintaan rute ke GraphHopper via Socket', { preferToll });
+    // Tandai bahwa request sedang dalam proses
+    graphhopperRequestSent.current = true;
+    isFetchingRouteRef.current = true;
+    lastFetchTimeRef.current = Date.now();
+    
+    setIsLoading(true);
+    setError(null);
+    
+    console.log('Requesting route from GraphHopper via socket:', {
+      startPoint: start, 
+      endPoint: end, 
+      mode, 
+      preferToll,
+      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null
+    });
+    
+    // Siapkan data untuk request
+    const routeRequest = {
+      deviceID: driverId || 'unknown',
+      startPoint: start,
+      endPoint: end,
+      transportMode: mode,
+      preferTollRoads: preferToll, // Pastikan nilai terbaru preferensi tol digunakan
+      truckSpecs: mode === 'driving-hgv' ? truckSpecs : null,
+      algorithm: "alternative_route", 
+      alternative_route_max_paths: 2 
+    };
+    
+    // Emit event ke server
+    socket.emit('requestRouteWithToll', routeRequest);
+    
+    // Set timeout untuk fallback ke OSRM jika tidak ada respons dalam 5 detik
+    setTimeout(() => {
+      if (graphhopperRequestSent.current) {
+        console.log('GraphHopper request timed out, falling back to OSRM');
+        graphhopperRequestSent.current = false;
+        isFetchingRouteRef.current = false;
+        fetchOsrmRoute(start, end, mode, preferToll);
+      }
+    }, 5000);
+  }, [socket, driverId, truckSpecs, fetchOsrmRoute]);
+  
   // Main function to fetch route - decides whether to use GraphHopper or OSRM
   const fetchRoute = useCallback((start, end, mode, preferToll = true) => {
     if (!start || !end) return;
+    
+    // Hindari meminta rute berulang kali dalam waktu singkat
+    const now = Date.now();
+    if (now - lastFetchTimeRef.current < 500) { // 500ms throttle
+      console.log('Throttling route request - too many requests');
+      return;
+    }
+    
+    console.log(`Fetching route with preferToll=${preferToll}`);
     
     // Khusus mode truk, gunakan GraphHopper secara langsung
     if (mode === 'driving-hgv') {
       console.log('Using GraphHopper for truck routing');
       setIsLoading(true);
       setError(null);
+      isFetchingRouteRef.current = true;
+      lastFetchTimeRef.current = now;
       
       // Gunakan service GraphHopper yang baru
       getGraphhopperRoute(start, end, mode, truckSpecs, preferToll)
         .then(routeData => {
           setIsLoading(false);
+          isFetchingRouteRef.current = false;
           
           // Set data rute
           setRouteGeometry(routeData.routeGeometry);
@@ -658,9 +701,14 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
           setTollInfo(routeData.tollInfo);
           
           // Set peringatan khusus truk
+          const warnings = [];
           if (routeData.truckWarnings) {
-            setTruckWarnings(routeData.truckWarnings);
+            warnings.push(...routeData.truckWarnings);
+          } else {
+            warnings.push(...detectTruckHazards(routeData.routeGeometry, routeData.usesToll));
           }
+          
+          setTruckWarnings(warnings);
           
           // Sesuaikan tampilan peta
           if (routeData.routeGeometry.length > 0 && map) {
@@ -674,43 +722,58 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
           
           // Panggil callback jika tersedia
           if (onRouteCalculated) {
-            onRouteCalculated(routeData);
+            onRouteCalculated({
+              ...routeData,
+              truckWarnings: warnings
+            });
           }
         })
         .catch(error => {
           console.error('Error fetching GraphHopper route:', error);
           setIsLoading(false);
           setError('Gagal mendapatkan rute dari GraphHopper. Beralih ke OSRM...');
+          isFetchingRouteRef.current = false;
           
           // Fallback ke OSRM jika GraphHopper gagal
           fetchOsrmRoute(start, end, mode, preferToll);
         });
     } else {
-      // Untuk mode lainnya, gunakan metode yang sudah ada
+      // Untuk mode lainnya, gunakan OSRM
       fetchOsrmRoute(start, end, mode, preferToll);
     }
-  }, [fetchOsrmRoute, map, onRouteCalculated, truckSpecs]);
-  
+  }, [fetchOsrmRoute, map, onRouteCalculated, truckSpecs, detectTruckHazards]);
 
   // Effect khusus untuk mengubah rute saat preferensi tol berubah
   useEffect(() => {
     console.log(`Toll preference changed to: ${preferTollRoads}`);
     
-    // Skip if no points set yet or map not ready
+    // Skip if no points set yet
     if (!startPoint || !endPoint || !map) {
       return;
     }
     
-    // Update prevProps ref to track the change
-    prevPropsRef.current = { 
-      ...prevPropsRef.current, 
-      preferTollRoads: preferTollRoads 
-    };
+    // Hindari multiple re-rendering dan requests
+    if (isFetchingRouteRef.current) {
+      console.log('Skipping toll preference update - route fetch already in progress');
+      return;
+    }
     
-    // Use cached routes if available (from the ref to prevent dependency cycle)
+    // Update ref dengan nilai terbaru
+    preferTollRoadsRef.current = preferTollRoads;
+    
+    // Jika socket tersedia, minta rute baru dari GraphHopper
+    if (socket && socket.connected) {
+      fetchGraphhopperRoute(startPoint, endPoint, transportMode, preferTollRoads);
+      return;
+    }
+    
+    // Jika socket tidak tersedia, gunakan caching lokal untuk tol/non-tol
     const cachedRoutes = availableRoutesRef.current;
     
     if (cachedRoutes.tollRoute && cachedRoutes.nonTollRoute) {
+      // Use cached routes if available
+      console.log("Using cached routes based on toll preference:", preferTollRoads);
+      
       // Select based on preference
       const selectedRoute = preferTollRoads ? 
         cachedRoutes.tollRoute : 
@@ -722,17 +785,18 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
       routeCalculatedRef.current = true;
       setUsesToll(selectedRoute.hasToll);
       
-      // Handle toll info
+      // Reset toll info karena OSRM tidak memberikan biaya tol
+      // Tambahkan estimasi biaya tol berdasarkan jarak dan golongan kendaraan
       let estimatedTollInfo = null;
       if (selectedRoute.hasToll) {
-        // Estimate toll distance (50% of total distance)
+        // Perkiraan jarak tol (50% dari total jarak)
         const estimatedTollDistance = selectedRoute.distance * 0.5;
         
-        // Get vehicle class based on transport mode and specs
+        // Perkiraan golongan kendaraan
         const vehicleClass = transportMode === 'driving-hgv' ? 
           getVehicleClassFromSpecs(truckSpecs) : 1;
         
-        // Estimate cost based on vehicle class and distance
+        // Perkiraan biaya berdasarkan tarif per km
         const ratePerKm = getTollRateForClass(vehicleClass);
         const estimatedCost = Math.round(estimatedTollDistance * ratePerKm);
         
@@ -750,39 +814,29 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
       }
       
       // Generate truck warnings if needed
-      let warnings = [];
+      const warnings = [];
       if (transportMode === 'driving-hgv') {
-        warnings = detectTruckHazards(selectedRoute.geometry, selectedRoute.hasToll);
+        warnings.push(...detectTruckHazards(selectedRoute.geometry, selectedRoute.hasToll));
         setTruckWarnings(warnings);
       }
       
-      // Notify parent component
+      // Notify parent
       if (onRouteCalculated) {
         onRouteCalculated({
           distance: selectedRoute.distance,
           duration: selectedRoute.duration,
           instructions: selectedRoute.instructions,
           routeGeometry: selectedRoute.geometry,
-          truckWarnings: transportMode === 'driving-hgv' ? warnings : null,
+          truckWarnings: warnings,
           usesToll: selectedRoute.hasToll,
           tollInfo: estimatedTollInfo
         });
       }
     } else {
-      // No cached routes available - need to fetch new routes
-      
-      // Only if socket is connected, request GraphHopper route via socket
-      if (socket && socket.connected) {
-        console.log("Requesting GraphHopper route via socket with new toll preference:", preferTollRoads);
-        fetchGraphhopperRoute(startPoint, endPoint, transportMode, preferTollRoads);
-      } else {
-        // Socket not available, use direct API call
-        console.log("Socket not available, using direct route calculation with toll preference:", preferTollRoads);
-        fetchRoute(startPoint, endPoint, transportMode, preferTollRoads);
-      }
+      // No cached routes, need to fetch
+      console.log("No cached routes, fetching new routes with toll preference:", preferTollRoads);
+      fetchRoute(startPoint, endPoint, transportMode, preferTollRoads);
     }
-    
-    // Only depend on preferTollRoads to prevent unnecessary reruns
   }, [preferTollRoads]);
 
   // Jalankan fetchRoute saat komponen mount atau props berubah
@@ -799,12 +853,26 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
       return;
     }
     
+    // Skip jika tidak ada perubahan pada point dan sedang loading
+    if (isLoading && 
+        prevPropsRef.current.startPoint && 
+        prevPropsRef.current.endPoint &&
+        prevPropsRef.current.startPoint[0] === startPoint[0] && 
+        prevPropsRef.current.startPoint[1] === startPoint[1] &&
+        prevPropsRef.current.endPoint[0] === endPoint[0] &&
+        prevPropsRef.current.endPoint[1] === endPoint[1] &&
+        prevPropsRef.current.transportMode === transportMode) {
+      console.log('Skipping fetchRoute due to ongoing loading with same points');
+      return;
+    }
+    
     // Reset cached routes saat lokasi berubah
     if (prevPropsRef.current.startPoint && prevPropsRef.current.endPoint && 
         (prevPropsRef.current.startPoint[0] !== startPoint[0] || 
          prevPropsRef.current.startPoint[1] !== startPoint[1] ||
          prevPropsRef.current.endPoint[0] !== endPoint[0] ||
          prevPropsRef.current.endPoint[1] !== endPoint[1])) {
+      console.log('Points changed, clearing route cache');
       // Reset both ref and state
       availableRoutesRef.current = {
         tollRoute: null,
@@ -812,9 +880,10 @@ console.log('Estimated toll info dari OSRM:', estimatedTollInfo);
       };
     }
     
-    // Ambil rute
-    fetchRoute(startPoint, endPoint, transportMode, preferTollRoads);
-  }, [startPoint, endPoint, transportMode, map, fetchRoute, preferTollRoads]);
+    // Ambil rute (menggunakan nilai preferTollRoads terbaru dari ref)
+    console.log('Fetching route from main effect with preferTollRoads:', preferTollRoadsRef.current);
+    fetchRoute(startPoint, endPoint, transportMode, preferTollRoadsRef.current);
+  }, [startPoint, endPoint, transportMode, map, fetchRoute, isLoading]);
 
   // Jika tidak ada titik, jangan render apa-apa
   if (!startPoint || !endPoint) {

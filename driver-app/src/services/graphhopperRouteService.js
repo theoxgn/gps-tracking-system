@@ -61,8 +61,8 @@ export const getGraphhopperRoute = async (startPoint, endPoint, transportMode, t
         if (!preferTollRoads) {
           customModel.priority = [
             {
-              if: "toll == true",
-              multiply_by: "0.1"
+                if: "toll == ALL || toll == HGV", // Fixed line
+                multiply_by: "0.1"
             }
           ];
         }
