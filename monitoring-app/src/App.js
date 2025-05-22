@@ -11,7 +11,11 @@ import {
   RefreshCw, 
   MapPin, 
   Navigation,
-  Route as RouteIcon
+  Route as RouteIcon,
+  Activity,
+  Target,
+  Eye,
+  MapPinned
 } from 'lucide-react';
 import MonitorChatComponent from './MonitorChatComponent';
 import MonitorRouteMap from './components/MonitorRouteMap';
@@ -66,6 +70,226 @@ const formatSpeed = (speedMps) => {
   return speedMps ? (speedMps * 3.6).toFixed(1) + ' km/h' : 'Idle';
 };
 
+// Styles object to match driver app
+const styles = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    overflow: 'hidden',
+    backgroundColor: '#f8fafc'
+  },
+  header: {
+    backgroundColor: '#ffffff',
+    padding: '12px 16px',
+    borderBottom: '1px solid #e2e8f0',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+  },
+  headerContent: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px'
+  },
+  brandTitle: {
+    fontSize: '18px',
+    fontWeight: '700',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    color: '#1e293b'
+  },
+  navTabs: {
+    display: 'flex',
+    gap: '16px'
+  },
+  navTab: {
+    padding: '6px 12px',
+    borderRadius: '4px',
+    fontSize: '14px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease'
+  },
+  navTabActive: {
+    backgroundColor: '#f1f5f9',
+    color: '#3b82f6'
+  },
+  navTabInactive: {
+    color: '#64748b'
+  },
+  mainContent: {
+    display: 'flex',
+    flex: 1,
+    overflow: 'hidden'
+  },
+  sidebar: {
+    width: '280px',
+    backgroundColor: '#ffffff',
+    borderRight: '1px solid #e2e8f0',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden'
+  },
+  sidebarContent: {
+    flex: 1,
+    padding: '16px',
+    backgroundColor: '#ffffff',
+    display: 'flex',
+    flexDirection: 'column',
+    overflowY: 'auto'
+  },
+  sectionTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    marginBottom: '12px',
+    color: '#3b82f6',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    borderBottom: '1px solid #e2e8f0',
+    paddingBottom: '8px'
+  },
+  card: {
+    padding: '16px',
+    backgroundColor: '#f1f5f9',
+    borderRadius: '8px',
+    marginBottom: '12px',
+    transition: 'all 0.2s ease',
+    cursor: 'pointer',
+    border: '1px solid #e2e8f0'
+  },
+  cardActive: {
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    borderColor: '#3b82f6'
+  },
+  cardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  cardTitle: {
+    fontWeight: 'bold',
+    fontSize: '16px',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap'
+  },
+  cardTime: {
+    fontSize: '12px',
+    color: '#64748b',
+    display: 'flex', 
+    alignItems: 'center',
+    gap: '4px'
+  },
+  cardGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, 1fr)',
+    gap: '8px',
+    marginTop: '8px',
+    fontSize: '12px',
+    color: '#475569'
+  },
+  infoItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px'
+  },
+  infoIcon: {
+    color: '#3b82f6'
+  },
+  routeBadge: {
+    marginTop: '8px',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    padding: '4px 8px',
+    borderRadius: '12px',
+    fontSize: '12px',
+    fontWeight: '500'
+  },
+  routeBadgeActive: {
+    backgroundColor: '#dcfce7',
+    color: '#16a34a'
+  },
+  routeBadgeInactive: {
+    backgroundColor: '#f1f5f9',
+    color: '#64748b'
+  },
+  controlsSection: {
+    padding: '16px',
+    backgroundColor: '#f8fafc',
+    borderTop: '1px solid #e2e8f0',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px'
+  },
+  button: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    padding: '12px',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    fontWeight: '600',
+    borderRadius: '8px',
+    border: 'none',
+    cursor: 'pointer',
+    transition: 'background-color 0.2s ease',
+    gap: '8px',
+    fontSize: '16px'
+  },
+  buttonHover: {
+    backgroundColor: '#2563eb'
+  },
+  mapContainer: {
+    flex: 1,
+    position: 'relative'
+  },
+  bottomPanels: {
+    display: 'flex',
+    padding: '16px',
+    gap: '16px',
+    backgroundColor: '#ffffff',
+    borderTop: '1px solid #e2e8f0'
+  },
+  bottomPanel: {
+    flex: 1,
+    padding: '16px',
+    backgroundColor: '#ffffff',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0'
+  },
+  panelTitle: {
+    fontSize: '16px',
+    fontWeight: '600',
+    marginBottom: '12px',
+    color: '#0f172a',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  panelContent: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    fontSize: '14px',
+    color: '#475569'
+  },
+  statusItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  statusValue: {
+    fontWeight: '500'
+  }
+};
+
 // Injects required leaflet styles to document
 const injectLeafletStyles = () => {
   const style = document.createElement('style');
@@ -109,9 +333,6 @@ const injectLeafletStyles = () => {
         flex-direction: column;
         height: 100vh;
       }
-      [style*="width: 320px"] {
-        width: 100% !important;
-      }
     }
   `;
   document.head.appendChild(style);
@@ -125,34 +346,52 @@ const injectLeafletStyles = () => {
 
 // Component to display a single driver in the list
 const DriverItem = ({ driver, isActive, onClick, hasRoute }) => {
+  const cardStyle = {
+    ...styles.card,
+    ...(isActive ? styles.cardActive : {})
+  };
+  
+  const timeStyle = {
+    ...styles.cardTime,
+    ...(isActive ? { color: 'rgba(255,255,255,0.8)' } : {})
+  };
+  
+  const gridStyle = {
+    ...styles.cardGrid,
+    ...(isActive ? { color: 'rgba(255,255,255,0.9)' } : {})
+  };
+
   return (
-    <div 
-      className={`p-4 rounded-xl cursor-pointer transition-all border ${isActive ? 'bg-blue-500 text-white border-blue-400 shadow-md' : 'bg-slate-100 hover:bg-blue-50 border-transparent'} group`}
-      onClick={onClick}
-    >
-      <div className="flex justify-between items-center">
-        <div className="font-bold text-base truncate">{driver.id}</div>
-        <div className={`text-xs ${isActive ? 'text-blue-100' : 'text-slate-500'} flex items-center gap-1`}>
+    <div style={cardStyle} onClick={onClick}>
+      <div style={styles.cardHeader}>
+        <div style={styles.cardTitle}>{driver.id}</div>
+        <div style={timeStyle}>
           <Clock size={12} />
           {getTimeElapsed(driver.timestamp)}
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-        <div className="flex items-center gap-1">
-          <MapPin size={13} className={isActive ? 'text-blue-100' : 'text-blue-500'} />
+      <div style={gridStyle}>
+        <div style={styles.infoItem}>
+          <MapPin size={13} style={{color: isActive ? 'rgba(255,255,255,0.8)' : '#3b82f6'}} />
           {driver.position[0].toFixed(4)}, {driver.position[1].toFixed(4)}
         </div>
-        <div className="flex items-center gap-1">
-          <Navigation size={13} className={isActive ? 'text-blue-100' : 'text-blue-500'} />
+        <div style={styles.infoItem}>
+          <Navigation size={13} style={{color: isActive ? 'rgba(255,255,255,0.8)' : '#3b82f6'}} />
           {formatSpeed(driver.speed)}
         </div>
       </div>
       
       {/* Route indicator badge */}
       {hasRoute && (
-        <div className={`mt-2 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${isActive ? 'bg-blue-400 text-white' : 'bg-blue-100 text-blue-600'}`}>
+        <div style={{
+          ...styles.routeBadge,
+          ...(isActive ? 
+            { backgroundColor: 'rgba(255,255,255,0.2)', color: 'white' } : 
+            styles.routeBadgeActive
+          )
+        }}>
           <RouteIcon size={12} />
-          Active Route
+          Rute Aktif
         </div>
       )}
     </div>
@@ -162,16 +401,21 @@ const DriverItem = ({ driver, isActive, onClick, hasRoute }) => {
 // Component to display the list of drivers
 const DriversList = ({ drivers, activeDriver, onDriverSelect, driverRoutes }) => {
   return (
-    <div className="flex-grow overflow-auto bg-white px-4 py-5 custom-scrollbar">
-      <h2 className="text-lg font-semibold mb-4 text-blue-500 flex items-center gap-2 border-b border-slate-200 pb-2">
+    <>
+      <div style={styles.sectionTitle}>
         <Truck size={18} /> Daftar Driver
-      </h2>
+      </div>
       {Object.keys(drivers).length === 0 && (
-        <div className="bg-slate-100 rounded-xl p-4 text-center text-slate-500 text-sm shadow-inner">
+        <div style={{
+          ...styles.card,
+          textAlign: 'center',
+          color: '#64748b',
+          fontStyle: 'italic'
+        }}>
           Tidak ada driver aktif
         </div>
       )}
-      <div className="space-y-3">
+      <div style={{marginBottom: '16px'}}>
         {Object.entries(drivers).map(([id, driver]) => (
           <DriverItem 
             key={id}
@@ -182,7 +426,7 @@ const DriversList = ({ drivers, activeDriver, onDriverSelect, driverRoutes }) =>
           />
         ))}
       </div>
-    </div>
+    </>
   );
 };
 
@@ -197,67 +441,83 @@ const Sidebar = ({
   driverRoutes
 }) => {
   return (
-    <div style={{ width: '320px' }} className="bg-white text-slate-700 flex flex-col shadow-lg border-r border-slate-200 overflow-hidden">
-      <div className="bg-blue-500 p-4 shadow-md flex flex-col gap-2">
-        <div className="flex justify-between items-center mb-2">
-          <h1 className="text-xl font-bold tracking-tight flex items-center gap-2 text-white">
-            <Truck className="text-white" size={20} />
-            Driver Monitoring
-          </h1>
-          <div className="flex items-center">
-            {connected ? 
-              <Wifi className="text-green-300 mr-1 animate-pulse" size={16} /> : 
-              <WifiOff className="text-red-300 mr-1" size={16} />
-            }
+    <div style={styles.sidebar}>
+      {/* Sidebar Content */}
+      <div style={styles.sidebarContent} className="custom-scrollbar">
+        <DriversList 
+          drivers={drivers}
+          activeDriver={activeDriver}
+          onDriverSelect={onDriverSelect}
+          driverRoutes={driverRoutes}
+        />
+        
+        {/* Driver Statistics */}
+        <div style={styles.sectionTitle}>
+          <Activity size={18} /> Statistik Driver
+        </div>
+        
+        <div style={{...styles.card, backgroundColor: '#f0f9ff', borderColor: '#bae6fd'}}>
+          <div style={{...styles.statusItem, marginBottom: '8px'}}>
+            <Users size={16} style={{color: '#0284c7'}} />
+            <span>Total Driver Aktif:</span>
+            <span style={{...styles.statusValue, color: '#0284c7'}}>
+              {Object.keys(drivers).length}
+            </span>
+          </div>
+          <div style={styles.statusItem}>
+            <RouteIcon size={16} style={{color: '#0284c7'}} />
+            <span>Driver dengan Rute:</span>
+            <span style={{...styles.statusValue, color: '#0284c7'}}>
+              {Object.keys(driverRoutes).length}
+            </span>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-white">
-          <Users className="inline mr-1" size={14} />
-          <span>{Object.keys(drivers).length} aktif</span>
-        </div>
-      </div>
-      
-      <DriversList 
-        drivers={drivers}
-        activeDriver={activeDriver}
-        onDriverSelect={onDriverSelect}
-        driverRoutes={driverRoutes}
-      />
-      
-      {/* Display route information when a driver with route is selected */}
-      {activeDriver && driverRoutes[activeDriver] && (
-        <div className="p-4 bg-blue-50 rounded-lg mx-4 mb-4 border border-blue-100">
-          <h3 className="text-lg font-semibold text-blue-700 mb-2">Route Information</h3>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-blue-500 font-medium">Distance</div>
-              <div>{driverRoutes[activeDriver].distance?.toFixed(2) || '?'} km</div>
+        
+        {/* Display route information when a driver with route is selected */}
+        {activeDriver && driverRoutes[activeDriver] && (
+          <>
+            <div style={styles.sectionTitle}>
+              <MapPinned size={18} /> Informasi Rute
             </div>
-            <div>
-              <div className="text-blue-500 font-medium">Duration</div>
-              <div>{driverRoutes[activeDriver].duration || '?'} minutes</div>
-            </div>
-            <div className="col-span-2">
-              <div className="text-blue-500 font-medium">Route Status</div>
-              <div>
-                {Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
-                 driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
-                  <span className="text-green-600">✓ Active route with {driverRoutes[activeDriver].routeGeometry.length} points</span>
-                ) : (
-                  <span className="text-yellow-600">⚠ Simple route line</span>
-                )}
+            <div style={{...styles.card, backgroundColor: '#f0f9ff', borderColor: '#bae6fd'}}>
+              <div style={{...styles.cardGrid, color: '#0f172a'}}>
+                <div>
+                  <div style={{color: '#0284c7', fontWeight: '500', marginBottom: '4px'}}>Jarak</div>
+                  <div style={styles.statusValue}>{driverRoutes[activeDriver].distance?.toFixed(2) || '?'} km</div>
+                </div>
+                <div>
+                  <div style={{color: '#0284c7', fontWeight: '500', marginBottom: '4px'}}>Durasi</div>
+                  <div style={styles.statusValue}>{driverRoutes[activeDriver].duration || '?'} menit</div>
+                </div>
+              </div>
+              <div style={{marginTop: '12px'}}>
+                <div style={{color: '#0284c7', fontWeight: '500', marginBottom: '4px'}}>Status Rute</div>
+                <div style={{fontSize: '14px'}}>
+                  {Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
+                   driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
+                    <span style={{color: '#16a34a'}}>✓ Rute aktif dengan {driverRoutes[activeDriver].routeGeometry.length} titik</span>
+                  ) : (
+                    <span style={{color: '#ea580c'}}>⚠ Rute sederhana</span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
       
-      <div className="p-5 bg-slate-100 border-t border-slate-200 flex flex-col gap-2">
+      {/* Controls */}
+      <div style={styles.controlsSection}>
         <button 
-          className="flex items-center justify-center w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-xl font-semibold shadow transition-all gap-2 text-base"
+          style={{
+            ...styles.button,
+            backgroundColor: autoCenter ? '#16a34a' : '#6b7280'
+          }}
           onClick={onToggleAutoCenter}
         >
-          <RefreshCw size={18} className={`${autoCenter ? 'animate-spin' : ''}`} />
+          <RefreshCw size={18} style={{
+            animation: autoCenter ? 'spin 1s linear infinite' : 'none'
+          }} />
           {autoCenter ? 'Auto-Center AKTIF' : 'Auto-Center MATI'}
         </button>
       </div>
@@ -274,11 +534,11 @@ const DriverMarker = ({ id, driver, isActive }) => {
       icon={createCustomIcon(isActive ? '#3b82f6' : '#64748b', driver.heading)}
     >
       <Popup>
-        <div className="text-center">
-          <div className="font-bold">{id}</div>
-          <div className="text-sm mt-1">Speed: {formatSpeed(driver.speed)}</div>
-          <div className="text-sm">Last Update: {driver.lastUpdate}</div>
-          <div className="text-sm">Heading: {driver.heading}°</div>
+        <div style={{textAlign: 'center', padding: '4px'}}>
+          <div style={{fontWeight: 'bold', color: '#3b82f6'}}>{id}</div>
+          <div style={{fontSize: '14px', marginTop: '4px'}}>Kecepatan: {formatSpeed(driver.speed)}</div>
+          <div style={{fontSize: '14px'}}>Update: {driver.lastUpdate}</div>
+          <div style={{fontSize: '14px'}}>Arah: {driver.heading}°</div>
         </div>
       </Popup>
     </Marker>
@@ -460,109 +720,253 @@ function App() {
     setAutoCenter(!autoCenter);
   };
 
+  // Get active driver count for status
+  const getActiveDriverCount = () => {
+    return Object.keys(drivers).length;
+  };
+
+  // Get driver with route count
+  const getDriversWithRouteCount = () => {
+    return Object.keys(driverRoutes).length;
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar 
-        drivers={drivers}
-        connected={connected}
-        activeDriver={activeDriver}
-        autoCenter={autoCenter}
-        onDriverSelect={handleDriverSelect}
-        onToggleAutoCenter={handleToggleAutoCenter}
-        driverRoutes={driverRoutes}
-      />
-      
-      {/* Map */}
-      <div className="map-wrapper">
-        <MapContainer 
-          center={DEFAULT_MAP_CENTER} 
-          zoom={DEFAULT_MAP_ZOOM} 
-          style={{ width: '100%', height: '100%', position: 'relative' }}
-          whenReady={(map) => {
-            mapRef.current = map.target;
-            setTimeout(() => {
-              mapRef.current.invalidateSize();
-              setMapLoaded(true);
-            }, 100);
-          }}
-        >
-          <TileLayer
-            attribution='&amp;copy <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+    <div style={styles.container}>
+      {/* Header Navigation */}
+      <div style={styles.header}>
+        <div style={styles.headerContent}>
+          <div style={styles.brandTitle}>
+            <Truck size={22} style={{ color: '#3b82f6' }} />
+            TrackMaster
+          </div>
           
-          {/* Driver markers */}
-          {Object.entries(drivers).map(([id, driver]) => (
-            <DriverMarker 
-              key={id}
-              id={id}
-              driver={driver}
-              isActive={activeDriver === id}
-            />
-          ))}
-          
-          {/* Display selected driver's route with proper validation */}
-          {activeDriver && driverRoutes[activeDriver] && (
-            Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
-            driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
-              <MonitorRouteMap
-                routeData={driverRoutes[activeDriver].routeGeometry}
-                startPoint={driverRoutes[activeDriver].startPoint}
-                endPoint={driverRoutes[activeDriver].endPoint}
-                fitRoute={true}
-              />
-            ) : (
-              // If we don't have valid route data but have start/end points, render a simple line
-              driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint ? (
-                <Polyline
-                  positions={[
-                    driverRoutes[activeDriver].startPoint,
-                    driverRoutes[activeDriver].endPoint
-                  ]}
-                  color="#3b82f6"
-                  weight={4}
-                  opacity={0.7}
-                  dashArray="10, 10"
-                />
-              ) : null
-            )
-          )}
-          
-          <MapController 
-            activeDriver={activeDriver} 
-            drivers={drivers} 
-            autoCenter={autoCenter} 
-          />
-        </MapContainer>
+          <div style={styles.navTabs}>
+            <div style={{
+              ...styles.navTab,
+              ...styles.navTabInactive
+            }}>
+              Driver App
+            </div>
+            <div style={{
+              ...styles.navTab,
+              ...styles.navTabActive
+            }}>
+              Monitoring App
+            </div>
+          </div>
+        </div>
         
-        <MonitorChatComponent 
-          socket={socket} 
-          drivers={drivers} 
-          activeDriver={activeDriver} 
-          connected={connected} 
+        {/* Connection Status */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '14px',
+          color: connected ? '#16a34a' : '#dc2626'
+        }}>
+          {connected ? <Wifi size={16} /> : <WifiOff size={16} />}
+          {connected ? 'Terhubung' : 'Terputus'}
+        </div>
+      </div>
+      
+      {/* Main Content Area */}
+      <div style={styles.mainContent}>
+        {/* Sidebar */}
+        <Sidebar 
+          drivers={drivers}
+          connected={connected}
+          activeDriver={activeDriver}
+          autoCenter={autoCenter}
+          onDriverSelect={handleDriverSelect}
+          onToggleAutoCenter={handleToggleAutoCenter}
+          driverRoutes={driverRoutes}
         />
         
-        {/* Debug message when a driver is selected but has invalid route data */}
-        {activeDriver && driverRoutes[activeDriver] && !(
-          Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
-          driverRoutes[activeDriver].routeGeometry.length >= 2
-        ) && !(
-          driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint
-        ) && (
-          <div style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            padding: '10px',
-            border: '1px solid red',
-            borderRadius: '5px',
-            zIndex: 1000
-          }}>
-            ⚠️ Invalid route data for driver {activeDriver}
+        {/* Main Content */}
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden'
+        }}>
+          {/* Map Container */}
+          <div style={styles.mapContainer}>
+            <MapContainer 
+              center={DEFAULT_MAP_CENTER} 
+              zoom={DEFAULT_MAP_ZOOM} 
+              style={{ width: '100%', height: '100%', position: 'relative' }}
+              whenReady={(map) => {
+                mapRef.current = map.target;
+                setTimeout(() => {
+                  mapRef.current.invalidateSize();
+                  setMapLoaded(true);
+                }, 100);
+              }}
+            >
+              <TileLayer
+                attribution='&amp;copy <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              
+              {/* Driver markers */}
+              {Object.entries(drivers).map(([id, driver]) => (
+                <DriverMarker 
+                  key={id}
+                  id={id}
+                  driver={driver}
+                  isActive={activeDriver === id}
+                />
+              ))}
+              
+              {/* Display selected driver's route with proper validation */}
+              {activeDriver && driverRoutes[activeDriver] && (
+                Array.isArray(driverRoutes[activeDriver].routeGeometry) && 
+                driverRoutes[activeDriver].routeGeometry.length >= 2 ? (
+                  <MonitorRouteMap
+                    routeData={driverRoutes[activeDriver].routeGeometry}
+                    startPoint={driverRoutes[activeDriver].startPoint}
+                    endPoint={driverRoutes[activeDriver].endPoint}
+                    fitRoute={true}
+                  />
+                ) : (
+                  // If we don't have valid route data but have start/end points, render a simple line
+                  driverRoutes[activeDriver].startPoint && driverRoutes[activeDriver].endPoint ? (
+                    <Polyline
+                      positions={[
+                        driverRoutes[activeDriver].startPoint,
+                        driverRoutes[activeDriver].endPoint
+                      ]}
+                      color="#3b82f6"
+                      weight={4}
+                      opacity={0.7}
+                      dashArray="10, 10"
+                    />
+                  ) : null
+                )
+              )}
+              
+              <MapController 
+                activeDriver={activeDriver} 
+                drivers={drivers} 
+                autoCenter={autoCenter} 
+              />
+            </MapContainer>
+            
+            <MonitorChatComponent 
+              socket={socket} 
+              drivers={drivers} 
+              activeDriver={activeDriver} 
+              connected={connected} 
+            />
           </div>
-        )}
+          
+          {/* Bottom Info Panels */}
+          <div style={styles.bottomPanels}>
+            {/* System Status */}
+            <div style={styles.bottomPanel}>
+              <div style={styles.panelTitle}>
+                <Activity size={18} />
+                Status Sistem
+              </div>
+              
+              <div style={styles.panelContent}>
+                {/* Connection Status */}
+                <div style={styles.statusItem}>
+                  {connected ? 
+                    <Wifi size={16} color="#16a34a" /> : 
+                    <WifiOff size={16} color="#dc2626" />
+                  }
+                  <span>Status Koneksi:</span>
+                  <span style={{
+                    ...styles.statusValue,
+                    color: connected ? '#16a34a' : '#dc2626'
+                  }}>
+                    {connected ? 'Terhubung' : 'Terputus'}
+                  </span>
+                </div>
+                
+                {/* Active Drivers */}
+                <div style={styles.statusItem}>
+                  <Users size={16} color="#3b82f6" />
+                  <span>Driver Aktif:</span>
+                  <span style={{...styles.statusValue, color: '#3b82f6'}}>
+                    {getActiveDriverCount()} driver
+                  </span>
+                </div>
+                
+                {/* Auto Center Status */}
+                <div style={styles.statusItem}>
+                  <Target size={16} color={autoCenter ? '#16a34a' : '#6b7280'} />
+                  <span>Auto-Center:</span>
+                  <span style={{
+                    ...styles.statusValue,
+                    color: autoCenter ? '#16a34a' : '#6b7280'
+                  }}>
+                    {autoCenter ? 'Aktif' : 'Tidak Aktif'}
+                  </span>
+                </div>
+                
+                {/* Selected Driver */}
+                <div style={styles.statusItem}>
+                  <Eye size={16} color="#3b82f6" />
+                  <span>Driver Dipilih:</span>
+                  <span style={styles.statusValue}>
+                    {activeDriver || 'Tidak ada'}
+                  </span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Monitoring Statistics */}
+            <div style={styles.bottomPanel}>
+              <div style={styles.panelTitle}>
+                <MapPinned size={18} />
+                Statistik Monitoring
+              </div>
+              
+              <div style={styles.panelContent}>
+                {/* Total Drivers */}
+                <div style={styles.statusItem}>
+                  <Truck size={16} color="#3b82f6" />
+                  <span>Total Driver:</span>
+                  <span style={{...styles.statusValue, color: '#3b82f6'}}>
+                    {getActiveDriverCount()} aktif
+                  </span>
+                </div>
+                
+                {/* Drivers with Routes */}
+                <div style={styles.statusItem}>
+                  <RouteIcon size={16} color="#16a34a" />
+                  <span>Driver dengan Rute:</span>
+                  <span style={{...styles.statusValue, color: '#16a34a'}}>
+                    {getDriversWithRouteCount()} driver
+                  </span>
+                </div>
+                
+                {/* Map Center */}
+                <div style={styles.statusItem}>
+                  <MapPin size={16} color="#3b82f6" />
+                  <span>Pusat Peta:</span>
+                  <span style={styles.statusValue}>
+                    {activeDriver ? 
+                      `Driver ${activeDriver}` : 
+                      'Semua Driver'
+                    }
+                  </span>
+                </div>
+                
+                {/* Last Update */}
+                <div style={styles.statusItem}>
+                  <Clock size={16} color="#3b82f6" />
+                  <span>Update Terakhir:</span>
+                  <span style={styles.statusValue}>
+                    {new Date().toLocaleTimeString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

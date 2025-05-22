@@ -648,26 +648,26 @@ function App() {
 
 
   // Render helper components
-  const renderHeader = () => (
-    <div style={styles.header}>
-      <div style={styles.headerTitle}>
-        <Truck style={styles.headerIcon} size={24} />
-        Driver Tracker
-      </div>
-      <div style={styles.statusBadge}>
-        <div>
-          {connected ? 
-            <><Wifi size={14} style={{ color: '#4ade80', marginRight: '4px' }} /> Connected</> : 
-            <><WifiOff size={14} style={{ color: '#f87171', marginRight: '4px' }} /> Disconnected</>
-          }
-        </div>
-        <div style={watchId !== null ? styles.statusBadgeActive : styles.statusBadgeInactive}>
-          <Activity size={14} style={watchId !== null ? styles.statusDotActive : styles.statusDotInactive} />
-          <span style={{ marginLeft: '4px' }}>{watchId !== null ? 'Active' : 'Idle'}</span>
-        </div>
-      </div>
-    </div>
-  );
+  // const renderHeader = () => (
+  //   <div style={styles.header}>
+  //     <div style={styles.headerTitle}>
+  //       <Truck style={styles.headerIcon} size={24} />
+  //       Driver Tracker
+  //     </div>
+  //     <div style={styles.statusBadge}>
+  //       <div>
+  //         {connected ? 
+  //           <><Wifi size={14} style={{ color: '#4ade80', marginRight: '4px' }} /> Connected</> : 
+  //           <><WifiOff size={14} style={{ color: '#f87171', marginRight: '4px' }} /> Disconnected</>
+  //         }
+  //       </div>
+  //       <div style={watchId !== null ? styles.statusBadgeActive : styles.statusBadgeInactive}>
+  //         <Activity size={14} style={watchId !== null ? styles.statusDotActive : styles.statusDotInactive} />
+  //         <span style={{ marginLeft: '4px' }}>{watchId !== null ? 'Active' : 'Idle'}</span>
+  //       </div>
+  //     </div>
+  //   </div>
+  // );
 
   const renderDriverInfo = () => (
     <>
