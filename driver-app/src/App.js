@@ -700,50 +700,6 @@ function App() {
     </>
   );
 
-  const renderStatusDetails = () => (
-    <>
-      <div style={styles.sectionTitle}>
-        <Activity size={18} /> Status Details
-      </div>
-      
-      <div style={styles.statusDetail}>
-        <div style={styles.card}>
-          <div style={styles.statusLabel}>Location</div>
-          <div style={{ wordWrap: 'break-word' }}>
-            {position ? `${position[0].toFixed(6)}, ${position[1].toFixed(6)}` : 'No location data'}
-          </div>
-        </div>
-        
-        <div style={styles.card}>
-          <div style={styles.statusLabel}>Speed</div>
-          <div>{(speed * 3.6).toFixed(1)} km/h</div>
-        </div>
-        
-        <div style={styles.card}>
-          <div style={styles.statusLabel}>Heading</div>
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            {heading ? heading.toFixed(0) + '°' : 'N/A'}
-            {heading && 
-              <Navigation 
-                size={14} 
-                style={{ 
-                  marginLeft: '8px', 
-                  color: '#60a5fa',
-                  transform: `rotate(${heading}deg)` 
-                }} 
-              />
-            }
-          </div>
-        </div>
-        
-        <div style={styles.card}>
-          <div style={styles.statusLabel}>Last Update</div>
-          <div>{lastUpdate || 'Never'}</div>
-        </div>
-      </div>
-    </>
-  );
-
   const renderRouteInfo = () => {
     if (!startPoint || !endPoint) return null;
 
@@ -834,16 +790,6 @@ function App() {
         </div>
 
         {renderTollRoadPreference()}
-        
-        <div style={styles.card}>
-          <div style={styles.statusLabel}>Jarak</div>
-          <div>{routeDistance ? routeDistance.toFixed(2) + ' km' : 'Menghitung...'}</div>
-        </div>
-        
-        <div style={styles.card}>
-          <div style={styles.statusLabel}>Perkiraan Waktu</div>
-          <div>{routeDuration ? routeDuration + ' menit' : 'Menghitung...'}</div>
-        </div>
         
         {/* Mode Transportasi */}
         <div style={styles.card}>
@@ -1086,25 +1032,348 @@ function App() {
       libraries={MAPS_LIBRARIES}
       onLoad={() => setIsScriptLoaded(true)}
     >
-      <div style={styles.container}>
-        {/* Sidebar */}
-        <div style={styles.sidebar}>
-          {renderHeader()}
-          
-          {/* Main Content */}
-          <div style={{...styles.content, ...styles.scrollbar}} className="custom-scrollbar">
-            {renderDriverInfo()}
-            {renderStatusDetails()}
-            {renderRouteInfo()}
-            {renderErrorBox()}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100vh',
+        overflow: 'hidden',
+        backgroundColor: '#f8fafc'
+      }}>
+        {/* Header Navigation */}
+        <div style={{
+          backgroundColor: '#ffffff',
+          padding: '12px 16px',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px'
+          }}>
+            <div style={{
+              fontSize: '18px',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              color: '#1e293b'
+            }}>
+              <Truck size={22} style={{ color: '#3b82f6' }} />
+              TrackMaster
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '16px'
+            }}>
+              <div style={{
+                padding: '6px 12px',
+                borderRadius: '4px',
+                backgroundColor: '#f1f5f9',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#3b82f6'
+              }}>
+                Driver App
+              </div>
+              <div style={{
+                padding: '6px 12px',
+                borderRadius: '4px',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: '#64748b',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+                ':hover': { backgroundColor: '#f1f5f9' }
+              }}>
+                Monitoring App
+              </div>
+            </div>
           </div>
-          
-          {/* Controls */}
-          {renderControls()}
         </div>
         
-        {/* Map Container */}
-        {renderMap()}
+        {/* Main Content Area */}
+        <div style={{
+          display: 'flex',
+          flex: 1,
+          overflow: 'hidden'
+        }}>
+          {/* Sidebar */}
+          <div style={{
+            width: '280px',
+            backgroundColor: '#ffffff',
+            borderRight: '1px solid #e2e8f0',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            
+            {/* Sidebar Content */}
+            <div style={{...styles.content, ...styles.scrollbar}} className="custom-scrollbar">
+              {renderDriverInfo()}
+              {/* {renderStatusDetails()} */}
+              {renderRouteInfo()}
+              {renderErrorBox()}
+            </div>
+            
+            {/* Controls */}
+            {renderControls()}
+          </div>
+          
+          {/* Main Content */}
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden'
+          }}>
+            {/* Map Container */}
+            {renderMap()}
+            
+            {/* Bottom Info Panels */}
+            <div style={{
+              display: 'flex',
+              padding: '16px',
+              gap: '16px',
+              backgroundColor: '#ffffff',
+              borderTop: '1px solid #e2e8f0'
+            }}>
+              {/* Status Details */}
+              <div style={{
+                flex: 1,
+                padding: '16px',
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  marginBottom: '12px',
+                  color: '#0f172a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <Activity size={18} />
+                  Status Sistem
+                </div>
+                
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  fontSize: '14px',
+                  color: '#475569'
+                }}>
+                  {/* Status GPS */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <Target size={16} color={watchId !== null ? '#10b981' : '#f87171'} />
+                    <span>Status GPS: </span>
+                    <span style={{ 
+                      color: watchId !== null ? '#10b981' : '#f87171',
+                      fontWeight: '500'
+                    }}>
+                      {watchId !== null ? 'Aktif' : 'Tidak Aktif'}
+                    </span>
+                    {error && (
+                      <span style={{ color: '#f87171', fontSize: '12px', marginLeft: '4px' }}>
+                        ({error})
+                      </span>
+                    )}
+                  </div>
+                  
+                  {/* Status Koneksi */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    {connected ? 
+                      <Wifi size={16} color="#10b981" /> : 
+                      <WifiOff size={16} color="#f87171" />
+                    }
+                    <span>Status Koneksi: </span>
+                    <span style={{ 
+                      color: connected ? '#10b981' : '#f87171',
+                      fontWeight: '500'
+                    }}>
+                      {connected ? 'Terhubung' : 'Terputus'}
+                    </span>
+                  </div>
+                  
+                  {/* Informasi Posisi */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <MapPin size={16} color="#3b82f6" />
+                    <span>Posisi: </span>
+                    <span style={{ fontWeight: '500' }}>
+                      {position ? `${position[0].toFixed(6)}, ${position[1].toFixed(6)}` : 'Tidak tersedia'}
+                    </span>
+                  </div>
+                  
+                  {/* Informasi Kecepatan */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <Navigation size={16} color="#3b82f6" />
+                    <span>Kecepatan: </span>
+                    <span style={{ fontWeight: '500' }}>
+                      {speed ? `${(speed * 3.6).toFixed(1)} km/h` : '0 km/h'}
+                    </span>
+                  </div>
+                  
+                  {/* Waktu Update Terakhir */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <Clock size={16} color="#3b82f6" />
+                    <span>Update Terakhir: </span>
+                    <span style={{ fontWeight: '500' }}>
+                      {lastUpdate || 'Belum ada update'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Informasi Kendaraan & Rute */}
+              <div style={{
+                flex: 1,
+                padding: '16px',
+                backgroundColor: '#ffffff',
+                borderRadius: '8px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{
+                  fontSize: '16px',
+                  fontWeight: '600',
+                  marginBottom: '12px',
+                  color: '#0f172a',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <Truck size={18} />
+                  Informasi Kendaraan & Rute
+                </div>
+                
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '10px',
+                  fontSize: '14px',
+                  color: '#475569'
+                }}>
+                  {/* Jenis Kendaraan */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}>
+                    <Truck size={16} color="#3b82f6" />
+                    <span>Jenis Kendaraan: </span>
+                    <span style={{ fontWeight: '500' }}>
+                      {transportMode === 'driving-hgv' ? 'Truk Barang' : 'Kendaraan Standar'}
+                    </span>
+                  </div>
+                  
+                  {/* Informasi Rute */}
+                  {(startPoint && endPoint) ? (
+                    <>
+                      {/* Jarak Tempuh */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <MapPinned size={16} color="#3b82f6" />
+                        <span>Jarak Tempuh: </span>
+                        <span style={{ fontWeight: '500' }}>
+                          {routeDistance ? `${routeDistance.toFixed(1)} km` : 'Menghitung...'}
+                        </span>
+                      </div>
+                      
+                      {/* Estimasi Waktu */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
+                      }}>
+                        <Clock size={16} color="#3b82f6" />
+                        <span>Estimasi Waktu: </span>
+                        <span style={{ fontWeight: '500' }}>
+                          {routeDuration ? `${Math.floor(routeDuration / 60)} jam ${routeDuration % 60} menit` : 'Menghitung...'}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: '#94a3b8', fontStyle: 'italic' }}>
+                      Belum ada rute yang dipilih
+                    </div>
+                  )}
+                  
+                  {/* Preferensi Jalan Tol */}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    marginTop: '4px',
+                    padding: '8px',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: '6px'
+                  }}>
+                    <input 
+                      type="checkbox" 
+                      id="toll-preference"
+                      checked={preferTollRoads}
+                      onChange={handleTollPreferenceChange}
+                      style={{ accentColor: '#3b82f6' }}
+                    />
+                    <label htmlFor="toll-preference" style={{ fontWeight: '500' }}>
+                      Gunakan Jalan Tol
+                    </label>
+                  </div>
+                  
+                  {/* Spesifikasi Truk (jika mode transportasi adalah truk) */}
+                  {transportMode === 'driving-hgv' && (
+                    <div style={{
+                      marginTop: '4px',
+                      padding: '8px',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '6px',
+                      fontSize: '13px'
+                    }}>
+                      <div style={{ fontWeight: '500', marginBottom: '4px' }}>Spesifikasi Truk:</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Tinggi: {truckSpecs.height} m</span>
+                        <span>Berat: {truckSpecs.weight} ton</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>Panjang: {truckSpecs.length} m</span>
+                        <span>Lebar: {truckSpecs.width} m</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </LoadScript>
   );
