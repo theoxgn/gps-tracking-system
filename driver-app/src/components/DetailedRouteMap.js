@@ -904,37 +904,46 @@ const DetailedRouteMap = ({
   
   return (
     <>
-      {/* Render polyline berdasarkan geometri rute */}
+      {/* Render polyline berdasarkan geometri rute dengan flat design */}
       <Polyline
         positions={routeGeometry}
-        color={isTruckRoute ? "#e67e22" : (usesToll ? "#3182CE" : "#1F2937")} // Warna berbeda untuk rute tol
-        weight={5}
-        opacity={0.7}
+        color={isTruckRoute ? "#f97316" : (usesToll ? "#0ea5e9" : "#64748b")} // Warna flat design untuk rute
+        weight={6}
+        opacity={0.85}
         smoothFactor={0.2}
+        dashArray={usesToll ? undefined : "1, 10"} // Garis putus-putus untuk jalan non-tol
+        lineCap="round"
+        lineJoin="round"
         className="route-polyline"
       />
       
-      {/* Tampilkan peringatan jika ini rute truk dan ada peringatan */}
+      {/* Tampilkan peringatan jika ini rute truk dan ada peringatan - flat design */}
       {isTruckRoute && truckWarnings.length > 0 && (
         <div style={{
           position: 'absolute',
           bottom: '20px',
           left: '20px',
-          backgroundColor: 'rgba(230, 126, 34, 0.9)',
+          backgroundColor: '#f97316',
           color: 'white',
-          padding: '12px',
-          borderRadius: '8px',
+          padding: '14px',
+          borderRadius: '12px',
           zIndex: 1000,
           maxWidth: '300px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          fontSize: '14px'
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          fontSize: '14px',
+          border: '2px solid rgba(255,255,255,0.2)'
         }}>
-          <div style={{ fontWeight: 'bold', marginBottom: '8px' }}>
-            ⚠️ Peringatan Rute Truk
+          <div style={{ fontWeight: 'bold', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            Peringatan Rute Truk
           </div>
-          <ul style={{ margin: 0, paddingLeft: '20px' }}>
+          <ul style={{ margin: 0, paddingLeft: '20px', opacity: '0.9' }}>
             {truckWarnings.map((warning, index) => (
-              <li key={index} style={{ marginBottom: '6px' }}>
+              <li key={index} style={{ marginBottom: '8px' }}>
                 {warning.message}
               </li>
             ))}
@@ -942,20 +951,21 @@ const DetailedRouteMap = ({
         </div>
       )}
 
-      {/* Panel Khusus Biaya Tol untuk Truk */}
+      {/* Panel Khusus Biaya Tol untuk Truk - flat design */}
       {isTruckRoute && usesToll && tollInfo && (
         <div style={{
           position: 'absolute',
           bottom: '20px',
           left: '320px',
-          backgroundColor: 'rgba(49, 130, 206, 0.9)',
+          backgroundColor: '#f97316',
           color: 'white',
-          padding: '10px 15px',
-          borderRadius: '8px',
+          padding: '12px 16px',
+          borderRadius: '12px',
           zIndex: 1000,
           maxWidth: '300px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          fontSize: '14px'
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          fontSize: '14px',
+          border: '2px solid rgba(255,255,255,0.2)'
         }}>
           <div style={{ fontWeight: 'bold', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -964,26 +974,27 @@ const DetailedRouteMap = ({
             </svg>
             Biaya Tol: Rp {tollInfo.estimatedCost.toLocaleString('id-ID')}
           </div>
-          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+          <div style={{ fontSize: '12px', marginTop: '4px', opacity: '0.9' }}>
             Jarak: {tollInfo.tollDistance.toFixed(1)} km (Golongan {getVehicleClassLabel(tollInfo.vehicleClass)})
           </div>
         </div>
       )}
       
-      {/* Tampilkan informasi biaya tol jika tersedia */}
+      {/* Tampilkan informasi biaya tol jika tersedia - flat design */}
       {usesToll && tollInfo && !isTruckRoute && (
         <div style={{
           position: 'absolute',
           bottom: '20px',
           left: '20px',
-          backgroundColor: 'rgba(49, 130, 206, 0.9)',
+          backgroundColor: '#0ea5e9',
           color: 'white',
-          padding: '10px 15px',
-          borderRadius: '8px',
+          padding: '12px 16px',
+          borderRadius: '12px',
           zIndex: 1000,
           maxWidth: '300px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-          fontSize: '14px'
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+          fontSize: '14px',
+          border: '2px solid rgba(255,255,255,0.2)'
         }}>
           <div style={{ fontWeight: 'bold', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -992,29 +1003,30 @@ const DetailedRouteMap = ({
             </svg>
             Biaya Tol: Rp {tollInfo.estimatedCost.toLocaleString('id-ID')}
           </div>
-          <div style={{ fontSize: '12px', marginTop: '4px' }}>
+          <div style={{ fontSize: '12px', marginTop: '4px', opacity: '0.9' }}>
             Jarak: {tollInfo.tollDistance.toFixed(1)} km (Golongan {getVehicleClassLabel(tollInfo.vehicleClass)})
           </div>
         </div>
       )}
       
-      {/* Tampilkan indikator jalan normal jika rute tidak menggunakan tol */}
+      {/* Tampilkan indikator jalan normal jika rute tidak menggunakan tol - flat design */}
       {!usesToll && !isTruckRoute && preferTollRoads === false && (
         <div style={{
           position: 'absolute',
           bottom: '20px',
           left: '20px',
-          backgroundColor: 'rgba(79, 70, 229, 0.9)',
+          backgroundColor: '#64748b',
           color: 'white',
-          padding: '10px 15px',
-          borderRadius: '8px',
+          padding: '12px 16px',
+          borderRadius: '12px',
           zIndex: 1000,
           maxWidth: '300px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
           fontSize: '14px',
           display: 'flex',
           alignItems: 'center',
-          gap: '8px'
+          gap: '8px',
+          border: '2px solid rgba(255,255,255,0.2)'
         }}>
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z"></path>
